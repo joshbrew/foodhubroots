@@ -22,8 +22,10 @@
   ],
   "author": "",
   "license": "",
-  "dependencies": {},
-  "devDependencies": {},
+  "dependencies": {
+    "braintree": "^3.23.0",
+    "braintree-web": "^3.102.0"
+  },
   "nodemonConfig": {
     "env": {
       "NODEMON": true
