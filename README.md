@@ -11,6 +11,8 @@ Todo:
 - Users create recurring buy lists like on mouser, can even schedule purchases (we need failsafes for this tho)
 - Sellers request accounts page
 
+
+```
        [Roots Platform Interface]
               /        \
              /          \
@@ -26,3 +28,5 @@ Todo:
     [Order Fulfillment]----[Shipping & Logistics]
          |
     [Feedback System]
+
+```
