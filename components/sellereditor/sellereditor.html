@@ -1,0 +1,115 @@
+<style>
+    .form-container {
+      display: flex;
+      flex-direction: column;
+      max-width: 600px;
+      margin: auto;
+      padding: 20px;
+      border: 1px solid #ccc;
+      border-radius: 5px;
+    }
+    .form-group {
+      margin-bottom: 10px;
+    }
+    label {
+      margin-bottom: 5px;
+      font-weight: bold;
+    }
+    input, select, textarea {
+      width: 100%;
+      padding: 10px;
+      margin: 5px 0 20px;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+    }
+    button {
+      padding: 10px 15px;
+      background-color: #5cb85c;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 16px;
+    }
+    button:hover {
+      background-color: #4cae4c;
+    }
+</style>
+<form class="form-container" id="seller-profile-form">
+    <div class="form-group">
+      <label for="sellerName">Name</label>
+      <input type="text" id="sellerName" name="name" required>
+    </div>
+    <div class="form-group">
+      <label for="sellerEmail">Email</label>
+      <input type="email" id="sellerEmail" name="email" required>
+    </div>
+    <div class="form-group">
+      <label for="sellerPhone">Phone</label>
+      <input type="tel" id="sellerPhone" name="phone" required>
+    </div>
+    <div class="form-group">
+      <label for="sellerWebsite">Website</label>
+      <input type="url" id="sellerWebsite" name="website">
+    </div>
+
+    <fieldset>
+        <!-- <legend>Location</legend>
+        <label for="country">Country</label>
+        <input type="text" id="country" name="location[country]" required> -->
+        
+        <label for="state">State</label>
+        <input type="text" id="state" name="location[state]" required>
+        
+        <label for="city">City</label>
+        <input type="text" id="city" name="location[city]" required>
+        
+        <label for="zipcode">Zip Code</label>
+        <input type="text" id="zipcode" name="location[zipcode]" required>
+        
+        <label for="coordinates">GPS (lat,long)</label>
+        <input type="text" id="coordinates" name="location[coordinates]" placeholder="47.6588,-117.4260" required>
+    </fieldset>
+      
+      <!-- Contact Inputs -->
+    <fieldset>
+        <legend>Contact</legend>
+        <!-- Email, Phone, Website already present above -->
+        
+        <label for="facebook">Facebook URL</label>
+        <input type="url" id="facebook" name="contact[socials][facebook]">
+        
+        <label for="twitter">Twitter Handle</label>
+        <input type="text" id="twitter" name="contact[socials][twitter]">
+
+        <button type="button" id="add-contact-field">Add Contact Field</button>
+
+    </fieldset>
+      
+      <!-- Images & Videos -->
+    <fieldset>
+        <legend>Images</legend>
+        <label for="logo">Logo URL</label>
+        <input type="url" id="logo" name="images[logo]">
+        
+        <label for="logo128">Small Logo URL</label>
+        <input type="url" id="logo128" name="images[logo128]">
+        
+        <!-- For direct image upload -->
+        <label for="imageUpload">Upload Image</label>
+        <input type="file" id="imageUpload" name="imageFile" accept="image/png, image/jpeg">
+
+        <button type="button" id="add-image">Add Image</button>
+    </fieldset>
+      
+    <fieldset>
+        <legend>Videos</legend>
+        <label for="videoIntro">Introduction Video URL</label>
+        <input type="url" id="videoIntro" name="videos[Intro]">
+
+        <button type="button" id="add-video">Add Video</button>
+    </fieldset>
+      
+      <!-- Submit Button -->
+    <button type="submit">Save Profile</button>
+</form>
