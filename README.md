@@ -1,8 +1,11 @@
-Sellers are submerchants
+## RootS FoodHub (very WIP)
+AGPL v3.0 software
 
-We split payments so we get a small percentage of wholesales thru site.
+Braintree-based industrial wholesaling site featuring submerchant accounts. 
 
-Site is a product listing site like Mouser, but we don't initially handle shipping, it's local or seller-specific.
+#### Note, nothing is implemented at all whatsoever, this is just a base for future updates.
+
+Whitepaper: https://drive.google.com/file/d/1_EyT7h5XfdrkGmCme_pW86Rytb5BniRw/view?usp=sharing
 
 Todo: 
 - Dynamic seller profiles and listing tables. Kind of like aliexpress's seller profiles or amazon's.
