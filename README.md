@@ -1,4 +1,4 @@
-## RootS FoodHub (very WIP)
+## Roots FoodHub (very WIP)
 AGPL v3.0 software
 
 Braintree-based industrial wholesaling site featuring submerchant accounts. 
