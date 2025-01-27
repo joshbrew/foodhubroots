@@ -1,4 +1,5 @@
 import html from './categorygen.html'
+import './categorygen.css'
 
 export class CategorySelect extends HTMLElement {
     constructor() {

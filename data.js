@@ -1,6 +1,4 @@
 //largely using GPT to generate and just tuning it to our needs 
-
-
 export const sellerProfileSample = { 
     "_id": "seller123", // Unique identifier for the seller
     "name": "Fresh Foods Inc.",
@@ -258,7 +256,7 @@ export const sampleItemListing = {
         ], 
         // e.g. harvest expiration
         "additional_payment_options":{ 
-            // non-credit card/braintree payments 
+            // non-credit card/braintree payments (i.e. in-person methods)
             "cash":true,
             "SNAP":true,
             "EBT":true

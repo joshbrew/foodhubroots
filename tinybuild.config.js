@@ -1,7 +1,16 @@
+import braintree from "braintree";
+
+const gateway = new braintree.BraintreeGateway({
+    environment: braintree.Environment.Sandbox,
+    merchantId: 'gq2p2y8wy79nb96d',
+    publicKey: 'kzjby2mhg575txfp',
+    privateKey: 'bd8e04ac080a6ec297b18816ae87c2ab'
+});
+
 const config = {
     bundler: { //esbuild settings, set false to skip build step or add bundle:true to config object to only bundle (alt methods)
         entryPoints: [ //entry point file(s). These can include .js, .mjs, .ts, .jsx, .tsx, or other javascript files. Make sure your entry point is a ts file if you want to generate types
-        "index.js"
+            "index.tsx"
         ],
         outfile: "dist/index", //exit point file, will append .js as well as indicators like .esm.js, .node.js for other build flags
         //outdir:'dist'               //exit point folder, define for multiple entryPoints
@@ -42,22 +51,23 @@ const config = {
         //redirect: 'http://localhost:8082' //instead of serving the default content, redirect ot another url
         //headers: { 'Content-Security-Policy': '*'  }, //global header overrides
         startpage: 'index.html',  //default home page/app entry point 
-        /*
-        routes:{ //set additional page routes (for sites instead of single page applications)
-            '/page2': 'mypage.html',
-            '/custom':{ //e.g. custom page template
-                headers: { 'Content-Security-Policy': '*' }, //page specific headers 
-                template:'<html><head></head><body><div>Hello World!</div></body></html>'
+        
+        // routes:{ //set additional page routes (for sites instead of single page applications)
+            //'/': 'index.html', //alt start page declaration
+            //'/404':'packager/node_server/other/404.html', //e.g. custom error page
+            //'/page2': 'mypage.html',
+            //'/custom':{ //e.g. custom page template
+            //    headers: { 'Content-Security-Policy': '*' }, //page specific headers 
+            //    template:'<html><head></head><body><div>Hello World!</div></body></html>'
                 //path: 'mypage.html' //or a file path (e.g. plus specific headers)
-            },
-            '/redirect':{ //e.g. custom redirect
-                redirect:'https://google.com'
-            },
-            '/other':(request,response) => {}, //custom request/response handling
-            '/': 'index.html', //alt start page declaration
-            '/404':'packager/node_server/other/404.html', //e.g. custom error page
-        },
-        */
+                //onrequest: (request,response) => {}, //custom request/response handling, return true to end the request automatically.
+            //},
+            //'/redirect':{ //e.g. custom redirect
+            //    redirect:'https://google.com'
+            //},
+            //'/other':(request,response) => {}, //custom request/response handling, return true to end the request automatically.
+        //},
+        
         socket_protocol: "ws", //frontend socket protocol, wss for served, ws for localhost
         hotreload: 5000,  //hotreload websocket server port
         //reloadscripts: false, //hot swap scripts, can break things if script handles initializations, otherwise css, link, srcs all hot swap without page reloading fairly intelligently
