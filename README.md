@@ -17,8 +17,8 @@ Todo:
 
 ```
        [Roots Platform Interface]
-              /        \
-             /          \
+                    | 
+                    |
        [Wholesalers & Distributors]
             /                \
            /                  \
