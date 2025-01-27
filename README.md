@@ -19,10 +19,10 @@ Todo:
        [Roots Platform Interface]
               /        \
              /          \
-       [Wholesalers]--[Distributors]
-            /           /       |
-           /           /        |
-    [Product Listing]--[Submerchant Accounts]
+       [Wholesalers & Distributors]
+            /                \
+           /                  \
+    [Product Listing]  [Submerchant Accounts]
          |                       |
          |                       |
     [Consumers]------[Braintree Payment Processing]
