@@ -3,7 +3,7 @@ AGPL v3.0 software
 
 Braintree-based industrial wholesaling site featuring submerchant accounts. 
 
-#### Note, nothing is implemented at all whatsoever, this is just a base for future updates.
+#### Note, nothing is implemented at all whatsoever, this is just a base for future updates upon project funding.
 
 Whitepaper: https://drive.google.com/file/d/1_EyT7h5XfdrkGmCme_pW86Rytb5BniRw/view?usp=sharing
 
