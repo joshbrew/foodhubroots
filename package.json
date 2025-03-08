@@ -25,12 +25,15 @@
   "dependencies": {
     "braintree": "^3.25.0",
     "braintree-web": "^3.109.0",
+    "braintree-web-drop-in": "^1.44.1",
     "dotenv": "^16.4.5",
     "react": "^18.3.1",
     "react-bootstrap": "^2.10.5",
     "react-dom": "^18.3.1"
   },
   "devDependencies": {
+    "@types/braintree": "^3.3.13",
+    "@types/node": "^22.13.10",
     "@types/react": "^18.3.12"
   },
   "nodemonConfig": {
