@@ -5,6 +5,9 @@ import { sComponent } from "./components/util/state.component";
 //https://developer.paypal.com/braintree/docs/start/overview/
 //https://developer.paypal.com/braintree/docs/start/drop-in
 
+
+let protocol = 'https';
+
 export class App extends sComponent {
   state = {
     // Braintree Drop-In
@@ -35,7 +38,7 @@ export class App extends sComponent {
   async componentDidMount() {
     try {
       // 1) Fetch a client token from your server
-      const tokenRes = await fetch("http://localhost:3000/client-token");
+      const tokenRes = await fetch(protocol+"://localhost:3000/client-token");
       const tokenData = await tokenRes.json();
 
       // Store client token in state
@@ -82,7 +85,7 @@ export class App extends sComponent {
       const { nonce } = await dropInInstance.requestPaymentMethod();
 
       // Call your /create-customer endpoint with customer details and the nonce
-      const response = await fetch("http://localhost:3000/create-customer", {
+      const response = await fetch(protocol+"://localhost:3000/create-customer", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -120,7 +123,7 @@ export class App extends sComponent {
 
     try {
       // Call your /checkout endpoint
-      const response = await fetch("http://localhost:3000/checkout", {
+      const response = await fetch(protocol+"://localhost:3000/checkout", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -155,7 +158,7 @@ export class App extends sComponent {
 
     try {
       // Send a structured payload with "individual" and "funding" objects as required.
-      const response = await fetch("http://localhost:3000/create-submerchant", {
+      const response = await fetch(protocol+"://localhost:3000/create-submerchant", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -213,7 +216,7 @@ export class App extends sComponent {
 
     try {
       // Updated endpoint URL to "/split-transaction" to match backend
-      const response = await fetch("http://localhost:3000/split-transaction", {
+      const response = await fetch(protocol+"://localhost:3000/split-transaction", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -242,7 +245,7 @@ export class App extends sComponent {
   // --------------------------------------------------
   handleFetchTransactions = async () => {
     try {
-      const response = await fetch("http://localhost:3000/transactions");
+      const response = await fetch(protocol+"://localhost:3000/transactions");
       const data = await response.json();
       if (data.transactions) {
         this.setState({
@@ -262,7 +265,7 @@ export class App extends sComponent {
   // --------------------------------------------------
   handleFetchCustomers = async () => {
     try {
-      const response = await fetch("http://localhost:3000/customers");
+      const response = await fetch(protocol+"://localhost:3000/customers");
       const data = await response.json();
       if (data.customers) {
         this.setState({
@@ -282,7 +285,7 @@ export class App extends sComponent {
   // --------------------------------------------------
   handleFetchSubmerchants = async () => {
     try {
-      const response = await fetch("http://localhost:3000/submerchants");
+      const response = await fetch(protocol+"://localhost:3000/submerchants");
       const data = await response.json();
       if (data.submerchants) {
         this.setState({

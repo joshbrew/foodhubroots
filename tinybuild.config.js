@@ -36,7 +36,7 @@ const config = {
     },
     server: {  //node server settings, set false to skip server step or add serve:true to config object to only serve (alt methods)
         debug: false,
-        protocol: "http",  //'http' or 'https'. HTTPS required for Nodejs <---> Python sockets. If using http, set production to False in python/server.py as well
+        protocol: "https",  //'http' or 'https'. HTTPS required for Nodejs <---> Python sockets. If using http, set production to False in python/server.py as well
         host: "localhost", //'localhost' or '127.0.0.1' etc.
         port: 8080, //e.g. port 80, 443, 8000
         //redirect: 'http://localhost:8082' //instead of serving the default content, redirect ot another url
@@ -59,7 +59,7 @@ const config = {
             //'/other':(request,response) => {}, //custom request/response handling, return true to end the request automatically.
         //},
         
-        socket_protocol: "ws", //frontend socket protocol, wss for served, ws for localhost
+        socket_protocol: "wss", //frontend socket protocol, wss for https/served, ws for http/localhost
         hotreload: 5000,  //hotreload websocket server port
         //reloadscripts: false, //hot swap scripts, can break things if script handles initializations, otherwise css, link, srcs all hot swap without page reloading fairly intelligently
         //delay: 50, //millisecond delay on the watch command for hot reloading
@@ -68,8 +68,8 @@ const config = {
         //python: false,//7000,  //quart server port (configured via the python server script file still)
         //python_node:7001, //websocket relay port (relays messages to client from nodejs that were sent to it by python)
         errpage: 'node_modules/tinybuild/tinybuild/node_server/other/404.html', //default error page, etc.
-        certpath:'node_modules/tinybuild/tinybuild/node_server/ssl/cert.pem',//if using https, this is required. See cert.pfx.md for instructions
-        keypath:'node_modules/tinybuild/tinybuild/node_server/ssl/key.pem'//if using https, this is required. See cert.pfx.md for instructions
+        certpath:'./server.crt',//if using https, this is required. See cert.pfx.md for instructions
+        keypath:'./server.key'//if using https, this is required. See cert.pfx.md for instructions
     },
 }
 export default config; //module.exports = config; //es5

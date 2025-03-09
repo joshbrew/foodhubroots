@@ -4,7 +4,17 @@ AGPL v3.0 software
 Braintree-based industrial wholesaling site featuring submerchant accounts. 
 
 
-Running:
+### Running:
+
+First get https crt and key made:
+
+You need openssl, you can get it easily with chocolatey: `choco install openssl`
+
+1. Run the command `openssl req -newkey rsa:2048 -x509 -nodes -keyout server.key -new -out server.crt -config ./openssl-custom.cnf -sha256 -days 365`
+
+2. Click on the server.crt and install it in the Trusted Certificate Authority folder.
+
+Next:
 
 Use latest Node.js LTS
 

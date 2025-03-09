@@ -21,9 +21,11 @@ interface ServerConfig {
 }
 
 const serverConfig: ServerConfig = {
-  protocol: 'http',
+  protocol: 'https', //'http'
   host: 'localhost',
   port: 3000,
+  keypath:'./server.key',
+  certpath:'./server.crt',
   startpage: 'index.html'
 };
 
@@ -93,6 +95,7 @@ const routes: Routes = {
     GET: async (request, response, cfg) => {
       try {
         const res = await gateway.clientToken.generate({});
+        console.log("generated client token: ", res.clientToken);
         setHeaders(response, 200);
         response.end(JSON.stringify({ clientToken: res.clientToken }));
       } catch (err) {
@@ -107,6 +110,7 @@ const routes: Routes = {
         const body = await getRequestBody(request);
         const { transactionId } = JSON.parse(body);
         const transaction = await gateway.transaction.find(transactionId);
+        console.log("generated transaction: ", transaction);
         setHeaders(response, 200);
         response.end(JSON.stringify({ transaction }));
       } catch (err) {
