@@ -1,12 +1,3 @@
-import braintree from "braintree";
-
-const gateway = new braintree.BraintreeGateway({
-    environment: braintree.Environment.Sandbox,
-    merchantId: 'gq2p2y8wy79nb96d',
-    publicKey: 'kzjby2mhg575txfp',
-    privateKey: 'bd8e04ac080a6ec297b18816ae87c2ab'
-});
-
 const config = {
     bundler: { //esbuild settings, set false to skip build step or add bundle:true to config object to only bundle (alt methods)
         entryPoints: [ //entry point file(s). These can include .js, .mjs, .ts, .jsx, .tsx, or other javascript files. Make sure your entry point is a ts file if you want to generate types

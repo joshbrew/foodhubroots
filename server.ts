@@ -6,6 +6,9 @@ import * as querystring from 'querystring';
 import braintree from 'braintree';
 import dotenv from 'dotenv';
 dotenv.config();
+//https://developer.paypal.com/braintree/docs/start/overview/
+//https://developer.paypal.com/braintree/docs/start/drop-in
+
 
 // --- Server configuration interface ---
 interface ServerConfig {

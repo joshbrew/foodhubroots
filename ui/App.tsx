@@ -2,6 +2,9 @@ import React from "react";
 import dropin from "braintree-web-drop-in";
 import { sComponent } from "./components/util/state.component";
 
+//https://developer.paypal.com/braintree/docs/start/overview/
+//https://developer.paypal.com/braintree/docs/start/drop-in
+
 export class App extends sComponent {
   state = {
     // Braintree Drop-In
