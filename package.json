@@ -6,7 +6,7 @@
   "types": "./dist/index.d.ts",
   "type": "module",
   "scripts": {
-    "start": "concurrently \"node server.js\" \"tinybuild\"",
+    "start": "concurrently \"node server.ts\" \"tinybuild\"",
     "build": "tinybuild build",
     "serve": "tinybuild serve",
     "init": "node tinybuild/init.js",
@@ -23,10 +23,10 @@
   "author": "",
   "license": "",
   "dependencies": {
-    "braintree": "^3.25.0",
-    "braintree-web": "^3.109.0",
+    "braintree": "^3.29.0",
+    "braintree-web": "^3.116.0",
     "braintree-web-drop-in": "^1.44.1",
-    "dotenv": "^16.4.5",
+    "dotenv": "^16.4.7",
     "react": "^18.3.1",
     "react-bootstrap": "^2.10.5",
     "react-dom": "^18.3.1"

@@ -22,6 +22,11 @@ export class App extends sComponent {
     // Transaction with split
     splitAmount: "50.00", // Example default
     log: "",
+
+    // New state variables for listings
+    transactions: [] as any[],
+    customers: [] as any[],
+    submerchants: [] as any[],
   };
 
   async componentDidMount() {
@@ -162,14 +167,14 @@ export class App extends sComponent {
               streetAddress: "123 Credibility St.",
               postalCode: "60606",
               locality: "Chicago",
-              region: "IL"
-            }
+              region: "IL",
+            },
           },
           funding: {
             destination: "bank",
             routingNumber: "071000013",
-            accountNumber: "1123581321"
-          }
+            accountNumber: "1123581321",
+          },
         }),
       });
 
@@ -229,6 +234,66 @@ export class App extends sComponent {
     }
   };
 
+  // --------------------------------------------------
+  // 6) New: Fetch and list transactions from backend
+  // --------------------------------------------------
+  handleFetchTransactions = async () => {
+    try {
+      const response = await fetch("http://localhost:3000/transactions");
+      const data = await response.json();
+      if (data.transactions) {
+        this.setState({
+          transactions: data.transactions,
+          log: "Transactions fetched successfully",
+        });
+      } else {
+        this.setState({ log: "Error fetching transactions" });
+      }
+    } catch (err: any) {
+      this.setState({ log: "Error fetching transactions: " + err.message });
+    }
+  };
+
+  // --------------------------------------------------
+  // 7) New: Fetch and list customers from backend
+  // --------------------------------------------------
+  handleFetchCustomers = async () => {
+    try {
+      const response = await fetch("http://localhost:3000/customers");
+      const data = await response.json();
+      if (data.customers) {
+        this.setState({
+          customers: data.customers,
+          log: "Customers fetched successfully",
+        });
+      } else {
+        this.setState({ log: "Error fetching customers" });
+      }
+    } catch (err: any) {
+      this.setState({ log: "Error fetching customers: " + err.message });
+    }
+  };
+
+  // --------------------------------------------------
+  // 8) New: Fetch and list submerchants using the new "/submerchants" endpoint
+  // --------------------------------------------------
+  handleFetchSubmerchants = async () => {
+    try {
+      const response = await fetch("http://localhost:3000/submerchants");
+      const data = await response.json();
+      if (data.submerchants) {
+        this.setState({
+          submerchants: data.submerchants,
+          log: "Submerchants fetched successfully",
+        });
+      } else {
+        this.setState({ log: "Error fetching submerchants" });
+      }
+    } catch (err: any) {
+      this.setState({ log: "Error fetching submerchants: " + err.message });
+    }
+  };
+
   render() {
     const {
       firstName,
@@ -240,6 +305,9 @@ export class App extends sComponent {
       subMerchantId,
       splitAmount,
       log,
+      transactions,
+      customers,
+      submerchants,
     } = this.state;
 
     return (
@@ -361,6 +429,103 @@ export class App extends sComponent {
         <div style={{ margin: "10px 0" }}>
           <h3>Log Output</h3>
           <pre>{log}</pre>
+        </div>
+
+        <hr />
+
+        {/* ========================
+            (F) DATA LISTINGS
+        ========================= */}
+        <div style={{ margin: "10px 0" }}>
+          <h2>Data Listings</h2>
+          <div style={{ marginBottom: "10px" }}>
+            <button onClick={this.handleFetchTransactions}>Refresh Transactions</button>
+            <button onClick={this.handleFetchCustomers} style={{ marginLeft: "10px" }}>
+              Refresh Customers
+            </button>
+            <button onClick={this.handleFetchSubmerchants} style={{ marginLeft: "10px" }}>
+              Refresh Submerchants
+            </button>
+          </div>
+
+          {/* Transactions Table */}
+          <h3>Transactions</h3>
+          <table border={1} cellPadding={5}>
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>Status</th>
+                <th>Amount</th>
+                <th>Created At</th>
+              </tr>
+            </thead>
+            <tbody>
+              {transactions.length > 0 ? (
+                transactions.map((tx: any, idx: number) => (
+                  <tr key={idx}>
+                    <td>{tx.id}</td>
+                    <td>{tx.status}</td>
+                    <td>{tx.amount}</td>
+                    <td>{tx.createdAt ? new Date(tx.createdAt).toLocaleString() : ""}</td>
+                  </tr>
+                ))
+              ) : (
+                <tr>
+                  <td colSpan={4}>No transactions found</td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+
+          {/* Customers Table */}
+          <h3>Customers</h3>
+          <table border={1} cellPadding={5}>
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>Email</th>
+              </tr>
+            </thead>
+            <tbody>
+              {customers.length > 0 ? (
+                customers.map((cust: any, idx: number) => (
+                  <tr key={idx}>
+                    <td>{cust.id}</td>
+                    <td>{cust.email}</td>
+                  </tr>
+                ))
+              ) : (
+                <tr>
+                  <td colSpan={2}>No customers found</td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+
+          {/* Submerchants Table */}
+          <h3>Submerchants</h3>
+          <table border={1} cellPadding={5}>
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {submerchants.length > 0 ? (
+                submerchants.map((sub: any, idx: number) => (
+                  <tr key={idx}>
+                    <td>{sub.id || sub.merchantAccount?.id}</td>
+                    <td>{sub.status || sub.merchantAccount?.status || "N/A"}</td>
+                  </tr>
+                ))
+              ) : (
+                <tr>
+                  <td colSpan={2}>No submerchants found</td>
+                </tr>
+              )}
+            </tbody>
+          </table>
         </div>
       </div>
     );

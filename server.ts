@@ -2,6 +2,7 @@ import * as http from 'http';
 import * as https from 'https';
 import * as fs from 'fs';
 import * as path from 'path';
+import * as querystring from 'querystring';
 import braintree from 'braintree';
 import dotenv from 'dotenv';
 dotenv.config();
@@ -279,6 +280,186 @@ const routes: Routes = {
       } catch (err) {
         setHeaders(response, 500);
         response.end(JSON.stringify({ error: 'Failed to process split transaction' }));
+      }
+    }
+  },
+  
+  // GET /transactions - Return all transactions (filtered by createdAt)
+  "/transactions": {
+    GET: async (request, response, cfg) => {
+      try {
+        const transactions = await new Promise<any[]>((resolve, reject) => {
+          const result: any[] = [];
+          gateway.transaction.search(
+            (search) => {
+              // Use a wide date range to capture transactions (from Jan 1, 2000)
+              search.createdAt().min(new Date(2000, 0, 1));
+            },
+            //@ts-ignore
+            (err: any, collection: any) => {
+              if (err) return reject(err);
+              (collection.each as any)((err: any, transaction: any) => {
+                if (err) return reject(err);
+                result.push(transaction);
+              }, () => resolve(result));
+            }
+          );
+        });
+        setHeaders(response, 200);
+        response.end(JSON.stringify({ transactions }));
+      } catch (err) {
+        console.error(err);
+        setHeaders(response, 500);
+        response.end(JSON.stringify({ error: 'Failed to fetch transactions' }));
+      }
+    }
+  },
+
+  // GET /customers - Return all customers
+  "/customers": {
+    GET: async (request, response, cfg) => {
+      try {
+        const customers = await new Promise<any[]>((resolve, reject) => {
+          const result: any[] = [];
+          gateway.customer.search(
+            (search) => {
+              // No predicates added to return all customers
+            },
+            //@ts-ignore
+            (err: any, collection: any) => {
+              if (err) return reject(err);
+              (collection.each as any)((err: any, customer: any) => {
+                if (err) return reject(err);
+                result.push(customer);
+              }, () => resolve(result));
+            }
+          );
+        });
+        setHeaders(response, 200);
+        response.end(JSON.stringify({ customers }));
+      } catch (err) {
+        console.error(err);
+        setHeaders(response, 500);
+        response.end(JSON.stringify({ error: 'Failed to fetch customers' }));
+      }
+    }
+  },
+
+  // POST /get-submerchant - Return a single submerchant account using its ID
+  "/get-submerchant": {
+    POST: async (request, response, cfg) => {
+      try {
+        const body = await getRequestBody(request);
+        const { merchantAccountId } = JSON.parse(body);
+        const subMerchant = await new Promise<any>((resolve, reject) => {
+          gateway.merchantAccount.find(merchantAccountId).then((merchantAccount: any) => {
+            resolve(merchantAccount);
+          }).catch((err: any) => { if (err) return reject(err); });
+        });
+        setHeaders(response, 200);
+        response.end(JSON.stringify({ subMerchant }));
+      } catch (err) {
+        console.error(err);
+        setHeaders(response, 404);
+        response.end(JSON.stringify({ error: 'Submerchant not found' }));
+      }
+    }
+  },
+
+  // GET /submerchants - Parse the approved submerchant file and return submerchant details
+  "/submerchants": {
+    GET: async (request, response, cfg) => {
+      try {
+        // Check if the approved submerchant file exists
+        if (!fs.existsSync('approved_submerchants.txt')) {
+          setHeaders(response, 200);
+          response.end(JSON.stringify({ submerchants: [] }));
+          return;
+        }
+        // Read the file contents asynchronously using fs.promises
+        const data = await fs.promises.readFile('approved_submerchants.txt', 'utf-8');
+        const submerchantIds = data.split("\n").filter((line) => line.trim() !== "");
+        // For each submerchant ID, fetch details from Braintree
+        const submerchants = await Promise.all(
+          submerchantIds.map(async (id) => {
+            try {
+              const merchantAccount = await gateway.merchantAccount.find(id);
+              return merchantAccount;
+            } catch (err) {
+              return { id, error: "Submerchant not found" };
+            }
+          })
+        );
+        setHeaders(response, 200);
+        response.end(JSON.stringify({ submerchants }));
+      } catch (err) {
+        setHeaders(response, 500);
+        response.end(JSON.stringify({ error: 'Failed to fetch submerchants' }));
+      }
+    }
+  },
+
+  // --- Webhook Endpoint --- https url needs to be configured: https://developer.paypal.com/braintree/docs/guides/webhooks/create/node
+  "/webhook": {
+    POST: async (request, response, cfg) => {
+      try {
+        const body = await getRequestBody(request);
+        // Parse the URL-encoded body to extract bt_signature and bt_payload
+        const parsedBody = querystring.parse(body);
+        const btSignature = parsedBody.bt_signature as string;
+        const btPayload = parsedBody.bt_payload as string;
+
+        gateway.webhookNotification.parse(btSignature, btPayload, 
+        //@ts-ignore    
+        (err, webhookNotification) => {
+          if (err) {
+            setHeaders(response, 500);
+            response.end(JSON.stringify({ error: 'Failed to parse webhook notification' }));
+            return;
+          }
+
+          console.log("\n WEBHOOK NOTIFICATION: ", webhookNotification.message);
+          // Handle various webhook notification kinds
+          switch (webhookNotification.kind) {
+            //@ts-ignore   
+            case braintree.WebHookNotification.Kind.SubMerchantAccountApproved:
+              // Write approved submerchant id to a text file
+              fs.appendFile('approved_submerchants.txt', webhookNotification.merchantAccount.id + "\n", (err) => {
+                if (err) console.error('Error writing approved submerchant:', err);
+              });
+              break;
+            //@ts-ignore   
+            case braintree.WebhookNotification.Kind.SubMerchantAccountDeclined:
+              // Optionally log or handle declined submerchants
+              break;
+            //@ts-ignore   
+            case braintree.WebhookNotification.Kind.TransactionDisbursed:
+                //@ts-ignore   
+            case braintree.WebhookNotification.Kind.TransactionSettled:
+              // Successful transaction notifications
+              fs.appendFile('successful_transactions.txt', webhookNotification.transaction.id + "\n", (err) => {
+                if (err) console.error('Error writing successful transaction:', err);
+              });
+              break;
+            //@ts-ignore   
+            case braintree.WebhookNotification.Kind.TransactionSettlementDeclined:
+              // Declined transaction notifications
+              fs.appendFile('declined_transactions.txt', webhookNotification.transaction.id + "\n", (err) => {
+                if (err) console.error('Error writing declined transaction:', err);
+              });
+              break;
+            default:
+              // For other notification kinds, log the kind for debugging.
+              console.log('Received webhook notification of kind:', webhookNotification.kind);
+          }
+
+          // Always acknowledge receipt of the webhook
+          setHeaders(response, 200);
+          response.end(JSON.stringify({ received: true }));
+        });
+      } catch (err) {
+        setHeaders(response, 500);
+        response.end(JSON.stringify({ error: 'Failed to process webhook' }));
       }
     }
   }
