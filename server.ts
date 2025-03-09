@@ -500,7 +500,13 @@ function onRequest(
   }
 
   // Serve static files if they exist.
-  const requestURL = '.' + (request.url || '');
+  // If the base URL ("/") is requested, serve the startpage (index.html)
+  let urlPath = request.url || "";
+  if (urlPath === "/" || urlPath === "") {
+    urlPath = "/" + cfg.startpage;
+  }
+  const requestURL = '.' + urlPath;
+
   if (fs.existsSync(requestURL)) {
     fs.readFile(requestURL, (error, content) => {
       if (error) {
