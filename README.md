@@ -3,6 +3,20 @@ AGPL v3.0 software
 
 Braintree-based industrial wholesaling site featuring submerchant accounts. 
 
+
+Running:
+
+Use latest Node.js LTS
+
+If not installed: `npm i -g tinybuild`
+
+Then:
+
+`npm i`
+
+`npm start`
+
+
 #### Note, nothing is implemented at all whatsoever, this is just a base for future updates upon project funding.
 
 Whitepaper: https://drive.google.com/file/d/1_EyT7h5XfdrkGmCme_pW86Rytb5BniRw/view?usp=sharing
