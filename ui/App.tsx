@@ -1,52 +1,34 @@
-import React from "react";
+import React, { useState } from "react";
 import dropin from "braintree-web-drop-in";
 import { sComponent } from "./components/util/state.component";
 
-//https://developer.paypal.com/braintree/docs/start/overview/
-//https://developer.paypal.com/braintree/docs/start/drop-in
+// https://developer.paypal.com/braintree/docs/start/overview/
+// https://developer.paypal.com/braintree/docs/start/drop-in
 
+const protocol = "https";
 
-let protocol = 'https';
-
+// -------------------------------------------------------------------
+// Main App Component: Fetches client token and initializes Drop-In UI
+// -------------------------------------------------------------------
 export class App extends sComponent {
   state = {
-    // Braintree Drop-In
+    // Braintree Drop-In state
     clientToken: null as string | null,
     dropInInstance: null as any,
-
-    // Customer creation
-    firstName: "",
-    lastName: "",
-    email: "",
-    createdCustomerId: "",
-    amount: "10.00",
-
-    // Sub-merchant creation
-    subMerchantEmail: "",
-    subMerchantId: "",
-
-    // Transaction with split
-    splitAmount: "50.00", // Example default
-    log: "",
-
-    // New state variables for listings
-    transactions: [] as any[],
-    customers: [] as any[],
-    submerchants: [] as any[],
   };
 
   async componentDidMount() {
     try {
-      // 1) Fetch a client token from your server
-      const tokenRes = await fetch(protocol+"://localhost:3000/client-token");
+      // Fetch a client token from your server
+      const tokenRes = await fetch(protocol + "://localhost:3000/client-token");
       const tokenData = await tokenRes.json();
-
-      // Store client token in state
+      // Store the client token and initialize the Drop-In UI
       this.setState({ clientToken: tokenData.clientToken });
+      
       this.initializeDropIn();
+    
     } catch (err: any) {
       console.error("Failed to fetch client token:", err);
-      this.setState({ log: `Failed to fetch client token: ${err.message}` });
     }
   }
 
@@ -62,7 +44,6 @@ export class App extends sComponent {
       (createErr, instance) => {
         if (createErr) {
           console.error("Drop-in create error:", createErr);
-          this.setState({ log: "Drop-in create error: " + createErr.message });
           return;
         }
         this.setState({ dropInInstance: instance });
@@ -70,13 +51,42 @@ export class App extends sComponent {
     );
   }
 
-  // -----------------------------
-  // 2) Create a Customer
-  // -----------------------------
-  handleCreateCustomer = async () => {
-    const { dropInInstance, firstName, lastName, email } = this.state;
+  render() {
+    return (
+      <div style={{ margin: "20px" }}>
+        <h1>Braintree Sandbox Test</h1>
+        {/* Pass the dropInInstance prop to CreateCustomer */}
+        <CreateCustomer dropInInstance={this.state.dropInInstance} />
+        <hr />
+        <RegularCheckout />
+        <hr />
+        <CreateSubMerchant />
+        <hr />
+        <TransactionWithSplit />
+        <hr />
+        <DataListings />
+      </div>
+    );
+  }
+}
+
+// -------------------------------------------------------------------
+// 1. Create Customer Component (with its own handler)
+// -------------------------------------------------------------------
+interface CreateCustomerProps {
+  dropInInstance: any;
+}
+
+const CreateCustomer: React.FC<CreateCustomerProps> = ({ dropInInstance }) => {
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
+  const [email, setEmail] = useState("");
+  const [createdCustomerId, setCreatedCustomerId] = useState("");
+  const [log, setLog] = useState("");
+
+  const handleCreateCustomer = async () => {
     if (!dropInInstance) {
-      this.setState({ log: "Drop-in not ready yet." });
+      setLog("Drop-in not ready yet.");
       return;
     }
 
@@ -84,8 +94,8 @@ export class App extends sComponent {
       // Request the payment nonce from the Drop-In UI
       const { nonce } = await dropInInstance.requestPaymentMethod();
 
-      // Call your /create-customer endpoint with customer details and the nonce
-      const response = await fetch(protocol+"://localhost:3000/create-customer", {
+      // Call the /create-customer endpoint with customer details and the nonce
+      const response = await fetch(protocol + "://localhost:3000/create-customer", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -98,67 +108,123 @@ export class App extends sComponent {
 
       const data = await response.json();
       if (data.success) {
-        this.setState({
-          createdCustomerId: data.customerId,
-          log: `Customer created successfully! ID: ${data.customerId}`,
-        });
+        setCreatedCustomerId(data.customerId);
+        setLog(`Customer created successfully! ID: ${data.customerId}`);
       } else {
-        this.setState({ log: `Error creating customer: ${data.error}` });
+        setLog(`Error creating customer: ${data.error}`);
       }
     } catch (err: any) {
       console.error("Error creating customer:", err);
-      this.setState({ log: `Error creating customer: ${err.message}` });
+      setLog(`Error creating customer: ${err.message}`);
     }
   };
 
-  // -----------------------------
-  // 3) Regular Checkout
-  // -----------------------------
-  handleCheckout = async () => {
-    const { createdCustomerId, amount } = this.state;
+  return (
+    <div style={{ margin: "10px 0" }}>
+      <h2>Create Customer</h2>
+      <div>
+        <label>First Name:</label>
+        <input
+          type="text"
+          value={firstName}
+          onChange={(e) => setFirstName(e.target.value)}
+          style={{ marginRight: "10px" }}
+        />
+        <label>Last Name:</label>
+        <input
+          type="text"
+          value={lastName}
+          onChange={(e) => setLastName(e.target.value)}
+          style={{ marginRight: "10px" }}
+        />
+        <label>Email:</label>
+        <input
+          type="text"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          style={{ marginRight: "10px" }}
+        />
+      </div>
+      {/* Braintree Drop-In UI container */}
+      <div id="dropin-container" style={{ margin: "10px 0" }}></div>
+      <button onClick={handleCreateCustomer}>Create Customer</button>
+      <div style={{ margin: "5px 0" }}>
+        Current Customer ID: <strong>{createdCustomerId || "None"}</strong>
+      </div>
+      <div>{log}</div>
+    </div>
+  );
+};
+
+// -------------------------------------------------------------------
+// 2. Regular Checkout Component (with its own handler)
+// -------------------------------------------------------------------
+const RegularCheckout: React.FC = () => {
+  const [createdCustomerId, setCreatedCustomerId] = useState("");
+  const [amount, setAmount] = useState("10.00");
+  const [log, setLog] = useState("");
+
+  const handleCheckout = async () => {
     if (!createdCustomerId) {
-      this.setState({ log: "No customer has been created yet." });
+      setLog("No customer has been created yet.");
       return;
     }
 
     try {
-      // Call your /checkout endpoint
-      const response = await fetch(protocol+"://localhost:3000/checkout", {
+      const response = await fetch(protocol + "://localhost:3000/checkout", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          customerId: createdCustomerId,
-          amount,
-        }),
+        body: JSON.stringify({ customerId: createdCustomerId, amount }),
       });
 
       const data = await response.json();
       if (data.success) {
-        this.setState({
-          log: `Checkout successful! Transaction ID: ${data.transactionId}`,
-        });
+        setLog(`Checkout successful! Transaction ID: ${data.transactionId}`);
       } else {
-        this.setState({ log: `Error in checkout: ${data.error}` });
+        setLog(`Error in checkout: ${data.error}`);
       }
     } catch (err: any) {
       console.error("Error in checkout:", err);
-      this.setState({ log: `Error in checkout: ${err.message}` });
+      setLog(`Error in checkout: ${err.message}`);
     }
   };
 
-  // -----------------------------
-  // 4) Create a Sub-Merchant
-  // -----------------------------
-  handleCreateSubMerchant = async () => {
-    const { subMerchantEmail } = this.state;
+  return (
+    <div style={{ margin: "10px 0" }}>
+      <h2>Regular Checkout</h2>
+      <p>
+        Created Customer ID:{" "}
+        <strong>{createdCustomerId || "Not yet created"}</strong>
+      </p>
+      <label>Amount:</label>
+      <input
+        type="text"
+        value={amount}
+        onChange={(e) => setAmount(e.target.value)}
+        style={{ marginRight: "10px" }}
+      />
+      <button onClick={handleCheckout}>Checkout</button>
+      <div>{log}</div>
+    </div>
+  );
+};
+
+// -------------------------------------------------------------------
+// 3. Create Sub-Merchant Component (with its own handler)
+// -------------------------------------------------------------------
+const CreateSubMerchant: React.FC = () => {
+  const [subMerchantEmail, setSubMerchantEmail] = useState("");
+  const [subMerchantId, setSubMerchantId] = useState("");
+  const [log, setLog] = useState("");
+
+  const handleCreateSubMerchant = async () => {
     if (!subMerchantEmail) {
-      this.setState({ log: "Please enter an email for the sub-merchant." });
+      setLog("Please enter an email for the sub-merchant.");
       return;
     }
 
     try {
-      // Send a structured payload with "individual" and "funding" objects as required.
-      const response = await fetch(protocol+"://localhost:3000/create-submerchant", {
+      const response = await fetch(protocol + "://localhost:3000/create-submerchant", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -186,37 +252,61 @@ export class App extends sComponent {
 
       const data = await response.json();
       if (data.success) {
-        // Map the returned "subMerchantAccountId" to our state variable "subMerchantId"
-        this.setState({
-          subMerchantId: data.subMerchantAccountId,
-          log: `Sub-merchant created successfully! ID: ${data.subMerchantAccountId}`,
-        });
+        setSubMerchantId(data.subMerchantAccountId);
+        setLog(`Sub-merchant created successfully! ID: ${data.subMerchantAccountId}`);
       } else {
-        this.setState({ log: `Error creating sub-merchant: ${data.error}` });
+        setLog(`Error creating sub-merchant: ${data.error}`);
       }
     } catch (err: any) {
       console.error("Error creating sub-merchant:", err);
-      this.setState({ log: `Error creating sub-merchant: ${err.message}` });
+      setLog(`Error creating sub-merchant: ${err.message}`);
     }
   };
 
-  // -----------------------------
-  // 5) Transaction with 98/2 Split
-  // -----------------------------
-  handleTransactionWithSplit = async () => {
-    const { subMerchantId, splitAmount, createdCustomerId } = this.state;
+  return (
+    <div style={{ margin: "10px 0" }}>
+      <h2>Create Sub-Merchant</h2>
+      <p>
+        This simulates creating a new connected/partner merchant who can receive a
+        portion of a transaction split.
+      </p>
+      <label>Sub-Merchant Email:</label>
+      <input
+        type="text"
+        value={subMerchantEmail}
+        onChange={(e) => setSubMerchantEmail(e.target.value)}
+        style={{ marginRight: "10px" }}
+      />
+      <button onClick={handleCreateSubMerchant}>Create Sub-Merchant</button>
+      <div style={{ margin: "5px 0" }}>
+        Current Sub-Merchant ID: <strong>{subMerchantId || "None"}</strong>
+      </div>
+      <div>{log}</div>
+    </div>
+  );
+};
+
+// -------------------------------------------------------------------
+// 4. Transaction with Split Component (with its own handler)
+// -------------------------------------------------------------------
+const TransactionWithSplit: React.FC = () => {
+  const [subMerchantId, setSubMerchantId] = useState("");
+  const [createdCustomerId, setCreatedCustomerId] = useState("");
+  const [splitAmount, setSplitAmount] = useState("50.00");
+  const [log, setLog] = useState("");
+
+  const handleTransactionWithSplit = async () => {
     if (!subMerchantId) {
-      this.setState({ log: "No sub-merchant has been created yet." });
+      setLog("No sub-merchant has been created yet.");
       return;
     }
     if (!createdCustomerId) {
-      this.setState({ log: "No customer has been created yet." });
+      setLog("No customer has been created yet.");
       return;
     }
 
     try {
-      // Updated endpoint URL to "/split-transaction" to match backend
-      const response = await fetch(protocol+"://localhost:3000/split-transaction", {
+      const response = await fetch(protocol + "://localhost:3000/split-transaction", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -228,312 +318,185 @@ export class App extends sComponent {
 
       const data = await response.json();
       if (data.success) {
-        this.setState({
-          log: `Transaction with split successful! Transaction ID: ${data.transactionId}`,
-        });
+        setLog(`Transaction with split successful! Transaction ID: ${data.transactionId}`);
       } else {
-        this.setState({ log: `Error in split transaction: ${data.error}` });
+        setLog(`Error in split transaction: ${data.error}`);
       }
     } catch (err: any) {
       console.error("Error in split transaction:", err);
-      this.setState({ log: `Error in split transaction: ${err.message}` });
+      setLog(`Error in split transaction: ${err.message}`);
     }
   };
 
-  // --------------------------------------------------
-  // 6) New: Fetch and list transactions from backend
-  // --------------------------------------------------
-  handleFetchTransactions = async () => {
+  return (
+    <div style={{ margin: "10px 0" }}>
+      <h2>Transaction with 98/2 Split</h2>
+      <p>
+        This simulates charging the existing customer while sending 98% to the
+        sub-merchant and 2% to your master account.
+      </p>
+      <p>
+        Sub-Merchant ID: <strong>{subMerchantId || "Not yet created"}</strong>
+      </p>
+      <label>Split Transaction Amount:</label>
+      <input
+        type="text"
+        value={splitAmount}
+        onChange={(e) => setSplitAmount(e.target.value)}
+        style={{ marginRight: "10px" }}
+      />
+      <button onClick={handleTransactionWithSplit}>Pay Sub-Merchant (98%)</button>
+      <div>{log}</div>
+    </div>
+  );
+};
+
+// -------------------------------------------------------------------
+// 5. Data Listings Component (with its own refresh handlers)
+// -------------------------------------------------------------------
+const DataListings: React.FC = () => {
+  const [transactions, setTransactions] = useState<any[]>([]);
+  const [customers, setCustomers] = useState<any[]>([]);
+  const [submerchants, setSubmerchants] = useState<any[]>([]);
+  const [log, setLog] = useState("");
+
+  const handleFetchTransactions = async () => {
     try {
-      const response = await fetch(protocol+"://localhost:3000/transactions");
+      const response = await fetch(protocol + "://localhost:3000/transactions");
       const data = await response.json();
       if (data.transactions) {
-        this.setState({
-          transactions: data.transactions,
-          log: "Transactions fetched successfully",
-        });
+        setTransactions(data.transactions);
+        setLog("Transactions fetched successfully");
       } else {
-        this.setState({ log: "Error fetching transactions" });
+        setLog("Error fetching transactions");
       }
     } catch (err: any) {
-      this.setState({ log: "Error fetching transactions: " + err.message });
+      setLog("Error fetching transactions: " + err.message);
     }
   };
 
-  // --------------------------------------------------
-  // 7) New: Fetch and list customers from backend
-  // --------------------------------------------------
-  handleFetchCustomers = async () => {
+  const handleFetchCustomers = async () => {
     try {
-      const response = await fetch(protocol+"://localhost:3000/customers");
+      const response = await fetch(protocol + "://localhost:3000/customers");
       const data = await response.json();
       if (data.customers) {
-        this.setState({
-          customers: data.customers,
-          log: "Customers fetched successfully",
-        });
+        setCustomers(data.customers);
+        setLog("Customers fetched successfully");
       } else {
-        this.setState({ log: "Error fetching customers" });
+        setLog("Error fetching customers");
       }
     } catch (err: any) {
-      this.setState({ log: "Error fetching customers: " + err.message });
+      setLog("Error fetching customers: " + err.message);
     }
   };
 
-  // --------------------------------------------------
-  // 8) New: Fetch and list submerchants using the new "/submerchants" endpoint
-  // --------------------------------------------------
-  handleFetchSubmerchants = async () => {
+  const handleFetchSubmerchants = async () => {
     try {
-      const response = await fetch(protocol+"://localhost:3000/submerchants");
+      const response = await fetch(protocol + "://localhost:3000/submerchants");
       const data = await response.json();
       if (data.submerchants) {
-        this.setState({
-          submerchants: data.submerchants,
-          log: "Submerchants fetched successfully",
-        });
+        setSubmerchants(data.submerchants);
+        setLog("Submerchants fetched successfully");
       } else {
-        this.setState({ log: "Error fetching submerchants" });
+        setLog("Error fetching submerchants");
       }
     } catch (err: any) {
-      this.setState({ log: "Error fetching submerchants: " + err.message });
+      setLog("Error fetching submerchants: " + err.message);
     }
   };
 
-  render() {
-    const {
-      firstName,
-      lastName,
-      email,
-      amount,
-      createdCustomerId,
-      subMerchantEmail,
-      subMerchantId,
-      splitAmount,
-      log,
-      transactions,
-      customers,
-      submerchants,
-    } = this.state;
-
-    return (
-      <div style={{ margin: "20px" }}>
-        <h1>Braintree Sandbox Test</h1>
-
-        {/* ========================
-            (A) CREATE CUSTOMER
-        ========================= */}
-        <div style={{ margin: "10px 0" }}>
-          <h2>Create Customer</h2>
-          <div>
-            <label>First Name:</label>
-            <input
-              type="text"
-              value={firstName}
-              onChange={(e) => this.setState({ firstName: e.target.value })}
-              style={{ marginRight: "10px" }}
-            />
-            <label>Last Name:</label>
-            <input
-              type="text"
-              value={lastName}
-              onChange={(e) => this.setState({ lastName: e.target.value })}
-              style={{ marginRight: "10px" }}
-            />
-            <label>Email:</label>
-            <input
-              type="text"
-              value={email}
-              onChange={(e) => this.setState({ email: e.target.value })}
-              style={{ marginRight: "10px" }}
-            />
-          </div>
-
-          {/* Braintree Drop-In UI container */}
-          <div id="dropin-container" style={{ margin: "10px 0" }}></div>
-
-          <button onClick={this.handleCreateCustomer}>Create Customer</button>
-          <div style={{ margin: "5px 0" }}>
-            Current Customer ID: <strong>{createdCustomerId || "None"}</strong>
-          </div>
-        </div>
-
-        <hr />
-
-        {/* ========================
-            (B) CHECKOUT
-        ========================= */}
-        <div style={{ margin: "10px 0" }}>
-          <h2>Regular Checkout</h2>
-          <p>
-            Created Customer ID:{" "}
-            <strong>{createdCustomerId || "Not yet created"}</strong>
-          </p>
-          <label>Amount:</label>
-          <input
-            type="text"
-            value={amount}
-            onChange={(e) => this.setState({ amount: e.target.value })}
-            style={{ marginRight: "10px" }}
-          />
-          <button onClick={this.handleCheckout}>Checkout</button>
-        </div>
-
-        <hr />
-
-        {/* ========================
-            (C) CREATE SUB-MERCHANT
-        ========================= */}
-        <div style={{ margin: "10px 0" }}>
-          <h2>Create Sub-Merchant</h2>
-          <p>
-            This simulates creating a new connected/partner merchant who can receive a portion of a transaction split.
-          </p>
-          <label>Sub-Merchant Email:</label>
-          <input
-            type="text"
-            value={subMerchantEmail}
-            onChange={(e) => this.setState({ subMerchantEmail: e.target.value })}
-            style={{ marginRight: "10px" }}
-          />
-          <button onClick={this.handleCreateSubMerchant}>Create Sub-Merchant</button>
-          <div style={{ margin: "5px 0" }}>
-            Current Sub-Merchant ID: <strong>{subMerchantId || "None"}</strong>
-          </div>
-        </div>
-
-        <hr />
-
-        {/* ========================
-            (D) TRANSACTION w/ SPLIT
-        ========================= */}
-        <div style={{ margin: "10px 0" }}>
-          <h2>Transaction with 98/2 Split</h2>
-          <p>
-            This simulates charging the existing customer while sending 98% to the sub-merchant and 2% to your master account.
-          </p>
-          <p>
-            Sub-Merchant ID: <strong>{subMerchantId || "Not yet created"}</strong>
-          </p>
-          <label>Split Transaction Amount:</label>
-          <input
-            type="text"
-            value={splitAmount}
-            onChange={(e) => this.setState({ splitAmount: e.target.value })}
-            style={{ marginRight: "10px" }}
-          />
-          <button onClick={this.handleTransactionWithSplit}>
-            Pay Sub-Merchant (98%)
-          </button>
-        </div>
-
-        <hr />
-
-        {/* ========================
-            (E) LOG OUTPUT
-        ========================= */}
-        <div style={{ margin: "10px 0" }}>
-          <h3>Log Output</h3>
-          <pre>{log}</pre>
-        </div>
-
-        <hr />
-
-        {/* ========================
-            (F) DATA LISTINGS
-        ========================= */}
-        <div style={{ margin: "10px 0" }}>
-          <h2>Data Listings</h2>
-          <div style={{ marginBottom: "10px" }}>
-            <button onClick={this.handleFetchTransactions}>Refresh Transactions</button>
-            <button onClick={this.handleFetchCustomers} style={{ marginLeft: "10px" }}>
-              Refresh Customers
-            </button>
-            <button onClick={this.handleFetchSubmerchants} style={{ marginLeft: "10px" }}>
-              Refresh Submerchants
-            </button>
-          </div>
-
-          {/* Transactions Table */}
-          <h3>Transactions</h3>
-          <table border={1} cellPadding={5}>
-            <thead>
-              <tr>
-                <th>ID</th>
-                <th>Status</th>
-                <th>Amount</th>
-                <th>Created At</th>
-              </tr>
-            </thead>
-            <tbody>
-              {transactions.length > 0 ? (
-                transactions.map((tx: any, idx: number) => (
-                  <tr key={idx}>
-                    <td>{tx.id}</td>
-                    <td>{tx.status}</td>
-                    <td>{tx.amount}</td>
-                    <td>{tx.createdAt ? new Date(tx.createdAt).toLocaleString() : ""}</td>
-                  </tr>
-                ))
-              ) : (
-                <tr>
-                  <td colSpan={4}>No transactions found</td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-
-          {/* Customers Table */}
-          <h3>Customers</h3>
-          <table border={1} cellPadding={5}>
-            <thead>
-              <tr>
-                <th>ID</th>
-                <th>Email</th>
-              </tr>
-            </thead>
-            <tbody>
-              {customers.length > 0 ? (
-                customers.map((cust: any, idx: number) => (
-                  <tr key={idx}>
-                    <td>{cust.id}</td>
-                    <td>{cust.email}</td>
-                  </tr>
-                ))
-              ) : (
-                <tr>
-                  <td colSpan={2}>No customers found</td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-
-          {/* Submerchants Table */}
-          <h3>Submerchants</h3>
-          <table border={1} cellPadding={5}>
-            <thead>
-              <tr>
-                <th>ID</th>
-                <th>Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {submerchants.length > 0 ? (
-                submerchants.map((sub: any, idx: number) => (
-                  <tr key={idx}>
-                    <td>{sub.id || sub.merchantAccount?.id}</td>
-                    <td>{sub.status || sub.merchantAccount?.status || "N/A"}</td>
-                  </tr>
-                ))
-              ) : (
-                <tr>
-                  <td colSpan={2}>No submerchants found</td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
+  return (
+    <div style={{ margin: "10px 0" }}>
+      <h2>Data Listings</h2>
+      <div style={{ marginBottom: "10px" }}>
+        <button onClick={handleFetchTransactions}>Refresh Transactions</button>
+        <button onClick={handleFetchCustomers} style={{ marginLeft: "10px" }}>
+          Refresh Customers
+        </button>
+        <button onClick={handleFetchSubmerchants} style={{ marginLeft: "10px" }}>
+          Refresh Submerchants
+        </button>
       </div>
-    );
-  }
-}
+
+      {/* Transactions Table */}
+      <h3>Transactions</h3>
+      <table border={1} cellPadding={5}>
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>Status</th>
+            <th>Amount</th>
+            <th>Created At</th>
+          </tr>
+        </thead>
+        <tbody>
+          {transactions.length > 0 ? (
+            transactions.map((tx, idx) => (
+              <tr key={idx}>
+                <td>{tx.id}</td>
+                <td>{tx.status}</td>
+                <td>{tx.amount}</td>
+                <td>{tx.createdAt ? new Date(tx.createdAt).toLocaleString() : ""}</td>
+              </tr>
+            ))
+          ) : (
+            <tr>
+              <td colSpan={4}>No transactions found</td>
+            </tr>
+          )}
+        </tbody>
+      </table>
+
+      {/* Customers Table */}
+      <h3>Customers</h3>
+      <table border={1} cellPadding={5}>
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>Email</th>
+          </tr>
+        </thead>
+        <tbody>
+          {customers.length > 0 ? (
+            customers.map((cust, idx) => (
+              <tr key={idx}>
+                <td>{cust.id}</td>
+                <td>{cust.email}</td>
+              </tr>
+            ))
+          ) : (
+            <tr>
+              <td colSpan={2}>No customers found</td>
+            </tr>
+          )}
+        </tbody>
+      </table>
+
+      {/* Submerchants Table */}
+      <h3>Submerchants</h3>
+      <table border={1} cellPadding={5}>
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          {submerchants.length > 0 ? (
+            submerchants.map((sub, idx) => (
+              <tr key={idx}>
+                <td>{sub.id || sub.merchantAccount?.id}</td>
+                <td>{sub.status || sub.merchantAccount?.status || "N/A"}</td>
+              </tr>
+            ))
+          ) : (
+            <tr>
+              <td colSpan={2}>No submerchants found</td>
+            </tr>
+          )}
+        </tbody>
+      </table>
+      <div>{log}</div>
+    </div>
+  );
+};

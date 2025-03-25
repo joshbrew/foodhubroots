@@ -26,6 +26,23 @@ Then:
 
 `npm start`
 
+### ENV File configuration
+
+You need a `.env.` file to run the server apis.
+
+```
+BRAINTREE_ENVIRONMENT=sandbox
+BRAINTREE_MERCHANT_ID= #from braintree developer portal
+BRAINTREE_PUBLIC_KEY=
+BRAINTREE_PRIVATE_KEY=
+
+GOOGLE_CLIENTID= #for clientside login
+GOOGLE_SECRET= #for server auth
+GOOGLE_MAPS_KEY= #client google maps
+
+MONGODB_URI= #from mongodb database settings
+```
+
 
 #### Note, nothing is implemented at all whatsoever, this is just a base for future updates upon project funding.
 

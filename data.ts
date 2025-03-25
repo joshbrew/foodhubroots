@@ -246,6 +246,9 @@ type SellerProfile = {
     };
 };
 
+let x = {} as SellerProfile;
+
+
 type UserProfile = {
     id: string;
     name: {

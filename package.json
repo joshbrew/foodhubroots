@@ -27,6 +27,7 @@
     "braintree-web": "^3.116.0",
     "braintree-web-drop-in": "^1.44.1",
     "dotenv": "^16.4.7",
+    "mongodb": "^6.15.0",
     "react": "^18.3.1",
     "react-bootstrap": "^2.10.5",
     "react-dom": "^18.3.1"

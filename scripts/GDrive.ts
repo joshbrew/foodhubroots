@@ -152,6 +152,9 @@ export class GDrive {
   google = (window as any).google;
   gapi = (window as any).gapi;
   tokenClient = (window as any).tokenClient;
+
+  accessToken:string;
+
   gapiInited = this.gapi !== undefined;
   gsiInited = this.google !== undefined;
   isLoggedIn = false;
@@ -159,145 +162,138 @@ export class GDrive {
 
   userId: string;
 
+  fedcmEnabled = true;
+
   directory = "AppData"; //our directory of choice
   directoryId: string; //the unique google id
   //fs = fs;
 
   constructor(apiKey?, googleClientId?, directory?, discoverydocs?:string[], scope?:string) {
     if (directory) this.directory = directory;
-    if (apiKey && googleClientId)
-      this.initGapi(apiKey, googleClientId, discoverydocs, scope);
+    if (googleClientId)
+      this.initGapi(googleClientId, discoverydocs, scope);
   }
 
-  //this is deprecated now?: https://developers.google.com/identity/gsi/web/guides/overview
   initGapi = async (
-    apiKey: string,
-    googleClientID: string,
-    DISCOVERY_DOCS: string[] = [
-      'https://www.googleapis.com/discovery/v1/apis/drive/v3/rest', 
-      'https://www.googleapis.com/discovery/v1/apis/oauth2/v2/rest', 
-      'https://www.googleapis.com/discovery/v1/apis/calendar/v3/rest'
-    ],
-    SCOPE: string = "https://www.googleapis.com/auth/drive https://www.googleapis.com/auth/userinfo.profile https://www.googleapis.com/auth/userinfo.email https://www.googleapis.com/auth/calendar"
+    googleClientID:string,
+    DISCOVERY_DOCS:string[] = ['https://www.googleapis.com/discovery/v1/apis/oauth2/v2/rest'],  // Optional array of discovery doc URLs for API calls. // 'https://www.googleapis.com/discovery/v1/apis/drive/v3/rest', 'https://www.googleapis.com/discovery/v1/apis/oauth2/v2/rest', 'https://www.googleapis.com/discovery/v1/apis/calendar/v3/rest'
+    SCOPE = "https://www.googleapis.com/auth/userinfo.profile https://www.googleapis.com/auth/userinfo.email"   // Scopes for sign-in and API calls. "https://www.googleapis.com/auth/drive https://www.googleapis.com/auth/userinfo.profile https://www.googleapis.com/auth/userinfo.email https://www.googleapis.com/auth/calendar"
   ) => {
-    return new Promise(async (resolve, rej) => {
-      this.gapiInited = false;
-      this.gsiInited = false;
-
-      // Load GAPI client
-      const gapiScriptId = 'gapi-client-script';
-      if (document.getElementById(gapiScriptId)) {
-        // If the script already exists, deinitialize before reloading
-        this.deinit();
-      }
-      await this.loadScript(gapiScriptId, "https://apis.google.com/js/api.js", () => {
-        this.gapi = window.gapi;
-        this.gapi.load('client', async () => {
-          await this.gapi.client.init({
-            apiKey: apiKey,
-            discoveryDocs: DISCOVERY_DOCS,
+    return new Promise((resolve, reject) => {
+      if (DISCOVERY_DOCS?.length > 0) {
+        // Load the gapi client library if you need to call Google APIs.
+        const clientScriptId = 'gapi-client-script';
+        this.loadScript(clientScriptId, "https://apis.google.com/js/api.js", () => {
+          this.gapi = window.gapi;
+          this.gapi.load('client', async () => {
+            try {
+              await this.gapi.client.init({
+                discoveryDocs: DISCOVERY_DOCS,
+              });
+            } catch (err) {
+              return reject(err);
+            }
+            // Now load the GIS client.
+            const gsiScriptId = 'gsi-client-script';
+            this.loadScript(gsiScriptId, "https://accounts.google.com/gsi/client", () => {
+              this.google = window.google;
+              this.tokenClient = this.google.accounts.oauth2.initTokenClient({
+                client_id: googleClientID,
+                scope: SCOPE,
+                callback: '', // Callback will be set in the sign-in functions.
+                use_fedcm_for_prompt: this.fedcmEnabled,
+                use_fedcm_for_button: this.fedcmEnabled,
+              });
+              resolve(true);
+            });
           });
-          this.gapiInited = true;
         });
-      });
-
-      // Load GSI client
-      const gsiScriptId = 'gsi-client-script';
-
-      await this.loadScript(gsiScriptId, "https://accounts.google.com/gsi/client", () => {
-        this.google = window.google;
-        this.tokenClient = this.google.accounts.oauth2.initTokenClient({
-          client_id: googleClientID,
-          scope: SCOPE,
-          callback: '', // defined later
+      } else {
+        // No discovery docs needed – load only the GIS client.
+        const gsiScriptId = 'gsi-client-script';
+        this.loadScript(gsiScriptId, "https://accounts.google.com/gsi/client", () => {
+          this.google = window.google;
+          this.tokenClient = this.google.accounts.oauth2.initTokenClient({
+            client_id: googleClientID,
+            scope: SCOPE,
+            callback: '', // Callback will be set in the sign-in functions.
+            use_fedcm_for_prompt: this.fedcmEnabled,
+            use_fedcm_for_button: this.fedcmEnabled,
+          });
+          resolve(true);
         });
-        this.gsiInited = true;
-      });
-
-      resolve(true);
+      }
     });
-  }
-
+  };
+  
+  // Updated sign-in using GIS implicit flow.
+  // This function triggers a popup for user consent and obtains an access token.
+  handleUserSignIn = () => {
+    return new Promise((resolve, reject) => {
+      if (!this.tokenClient) {
+        console.error("Token client not initialized");
+        return reject("Token client not initialized");
+      }
+      // Set the callback to handle the token response.
+      this.tokenClient.callback = (tokenResponse) => {
+        if (tokenResponse.error) {
+          console.error("Token request error:", tokenResponse.error);
+          reject(tokenResponse.error);
+        } else if (tokenResponse.access_token) {
+          this.accessToken = tokenResponse.access_token;
+          this.isLoggedIn = true;
+          // Optionally check for your app-specific folder.
+          if (this.directory && !this.directoryId) {
+            this.checkFolder(this.directory)
+              .then(() => resolve(tokenResponse))
+              .catch(reject);
+          } else {
+            resolve(tokenResponse);
+          }
+        } else {
+          console.error("Sign-in incomplete.");
+          reject("Sign-in incomplete");
+        }
+      };
+      // Request an access token (this will open the consent popup).
+      this.tokenClient.requestAccessToken({ prompt: 'consent' });
+    });
+  };
+  
+  // A helper to "restore" sign-in based on a stored access token.
+  // Note: The GIS implicit flow does not automatically persist tokens,
+  // so you'll need to manage token storage if required.
   restoreSignIn = () => {
-    return new Promise((res, rej) => {
-      if (!this.tokenClient) {
-        console.error('Google API not found');
-        return;
-      }
-
-      this.tokenClient.callback = async (resp) => {
-        if (resp.error !== undefined) {
-          rej(resp);
-        } else if (resp.access_token) {
-          // Successful sign-in
-
-          this.isLoggedIn = true;
-          if (this.directory && !this.directoryId) { //this constrains the top level directory allowed in an application-specific folder we define by name, since we don't want to fully access the drive usually.
-            await this.checkFolder(this.directory); 
-          }
-          res(resp);
+    return new Promise((resolve, reject) => {
+      if (this.accessToken) {
+        this.isLoggedIn = true;
+        if (this.directory && !this.directoryId) {
+          this.checkFolder(this.directory)
+            .then(() => resolve({ access_token: this.accessToken }))
+            .catch(reject);
         } else {
-          console.error("Sign-in incomplete.")
-          // Handle other scenarios, such as the user closing the consent dialog
-          rej('Sign-in incomplete.');
+          resolve({ access_token: this.accessToken });
         }
-      };
-
-      if (this.gapi.client.getToken()) {
-        // Skip display of account chooser and consent dialog for an existing session.
-        this.tokenClient.requestAccessToken({ prompt: '' });
       } else {
-        rej("User not logged in!");
+        reject("No stored access token");
       }
     });
-  }
-
-  handleUserSignIn = (): Promise<any> => {
-    return new Promise((res, rej) => {
-      if (!this.tokenClient) {
-        console.error('Google API not found');
-        return;
-      }
-
-      this.tokenClient.callback = async (resp) => {
-        if (resp.error !== undefined) {
-          rej(resp);
-        } else if (resp.access_token) {
-          // Successful sign-in
-
-          this.isLoggedIn = true;
-          if (this.directory && !this.directoryId) { //this constrains the top level directory allowed in an application-specific folder we define by name, since we don't want to fully access the drive usually.
-            await this.checkFolder(this.directory); 
-          }
-          res(resp);
-        } else {
-          console.error("Sign-in incomplete.")
-          // Handle other scenarios, such as the user closing the consent dialog
-          rej('Sign-in incomplete.');
-        }
-      };
-
-      if (this.gapi.client.getToken() === null) {
-        // Prompt the user to select a Google Account and ask for consent to share their data
-        // when establishing a new session.
-        this.tokenClient.requestAccessToken({ prompt: 'consent' });
-      } else {
-
-        // Skip display of account chooser and consent dialog for an existing session.
-        this.tokenClient.requestAccessToken({ prompt: '' });
-      }
-    });
-  }
-
+  };
+  
+  // Updated sign-out procedure: revokes the access token via the GIS library.
   async signOut() {
-    if (this.gapi) {
-      const token = this.gapi.client.getToken();
-      await this.google.accounts.oauth2.revoke(token.access_token);
-      this.gapi.client.setToken(null);
-      return true;
-    } return false;
-  }
-
+    if (!this.accessToken) {
+      return false;
+    }
+    await this.google.accounts.oauth2.revoke(this.accessToken, () => {
+      console.log("Access token revoked");
+    });
+    this.accessToken = '';
+    this.isLoggedIn = false;
+    return true;
+  };
+  
+  // Helper to load external scripts.
   loadScript = (scriptId, src, onload) => {
     return new Promise((resolve) => {
       const script = document.createElement('script');
@@ -312,37 +308,26 @@ export class GDrive {
       };
       document.head.appendChild(script);
     });
-  }
-
+  };
+  
+  // Cleanup: Remove loaded scripts and reset state.
   deinit = () => {
-
-    // Properly handle the deinitialization of gapi client
-    if (this.gapi && this.gapi.client) {
-      // If there are specific cleanup tasks for gapi.client, perform them here
-      // For now, we're just setting it to undefined
-      this.gapi.client = undefined;
-    }
-    // Reset variables
+    // Optionally revoke token or perform other cleanup here.
     this.google = undefined;
     this.gapi = undefined;
     this.tokenClient = undefined;
-    this.gapiInited = false;
-    this.gsiInited = false;
     this.isLoggedIn = false;
-
-    // Remove scripts tp reset state
+    this.accessToken = '';
+  
     const removeScript = (scriptId) => {
       const script = document.getElementById(scriptId);
       if (script) {
         document.head.removeChild(script);
       }
-    }
-
+    };
     removeScript('gapi-client-script');
     removeScript('gsi-client-script');
-
-
-  }
+  };
 
   async searchDrive(query: string, pageSize = 100, pageToken: string | null = null, parentFolderId?: string, trashed=false) {
     try {
