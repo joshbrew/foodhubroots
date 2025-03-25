@@ -24,13 +24,13 @@
   "license": "",
   "dependencies": {
     "braintree": "^3.29.0",
-    "braintree-web": "^3.116.0",
+    "braintree-web": "^3.117.0",
     "braintree-web-drop-in": "^1.44.1",
     "dotenv": "^16.4.7",
     "mongodb": "^6.15.0",
-    "react": "^18.3.1",
-    "react-bootstrap": "^2.10.5",
-    "react-dom": "^18.3.1"
+    "react": "^19.0.0",
+    "react-bootstrap": "^2.10.9",
+    "react-dom": "^19.0.0"
   },
   "devDependencies": {
     "@types/braintree": "^3.3.13",
