@@ -111,7 +111,7 @@
       geo?: {
         type: "Point";
         coordinates: [number, number];
-      };
+      }[];
     };
   
     media?: {
@@ -199,7 +199,7 @@
       geo?: {
         type: "Point";
         coordinates: [number, number];
-      };
+      }[];
       [key: string]: unknown;
     };
   
@@ -337,7 +337,7 @@
         geo?: {
           type: "Point";
           coordinates: [number, number];
-        };
+        }[];
       }
     >;
     preferences?: {
