@@ -103,6 +103,7 @@
     location: {
       business_name?: string;
       address: {
+        street: string;
         country: string;
         state: string;
         city: string;
@@ -492,6 +493,7 @@
       compliance: {},
       location: {
         address: [{
+          street: "",
           country: "",
           state: "",
           city: "",
