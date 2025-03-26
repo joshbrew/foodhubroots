@@ -1,11 +1,11 @@
-import React, { useState } from "react";
+import React from "react";
 import dropin from "braintree-web-drop-in";
 import { sComponent } from "./components/util/state.component";
 
-// https://developer.paypal.com/braintree/docs/start/overview/
-// https://developer.paypal.com/braintree/docs/start/drop-in
-
 const protocol = "https";
+
+//sComponents keep a persistent state, you can import "state" from state.component to manipulate/reference state more programatically, 
+// tying the system together in a simple manner. state can also to localStorage
 
 // -------------------------------------------------------------------
 // Main App Component: Fetches client token and initializes Drop-In UI
@@ -24,9 +24,7 @@ export class App extends sComponent {
       const tokenData = await tokenRes.json();
       // Store the client token and initialize the Drop-In UI
       this.setState({ clientToken: tokenData.clientToken });
-      
       this.initializeDropIn();
-    
     } catch (err: any) {
       console.error("Failed to fetch client token:", err);
     }
@@ -71,22 +69,25 @@ export class App extends sComponent {
 }
 
 // -------------------------------------------------------------------
-// 1. Create Customer Component (with its own handler)
+// 1. Create Customer Component (as an sComponent)
 // -------------------------------------------------------------------
-interface CreateCustomerProps {
-  dropInInstance: any;
-}
+export class CreateCustomer extends sComponent<any,any> {
+  state = {
+    firstName: "",
+    lastName: "",
+    email: "",
+    createdCustomerId: "",
+    log: "",
+  };
 
-const CreateCustomer: React.FC<CreateCustomerProps> = ({ dropInInstance }) => {
-  const [firstName, setFirstName] = useState("");
-  const [lastName, setLastName] = useState("");
-  const [email, setEmail] = useState("");
-  const [createdCustomerId, setCreatedCustomerId] = useState("");
-  const [log, setLog] = useState("");
+  constructor(props: any) {
+    super(props);
+  }
 
-  const handleCreateCustomer = async () => {
+  handleCreateCustomer = async () => {
+    const dropInInstance = this.props.dropInInstance;
     if (!dropInInstance) {
-      setLog("Drop-in not ready yet.");
+      this.setState({ log: "Drop-in not ready yet." });
       return;
     }
 
@@ -99,74 +100,85 @@ const CreateCustomer: React.FC<CreateCustomerProps> = ({ dropInInstance }) => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          firstName,
-          lastName,
-          email,
+          firstName: this.state.firstName,
+          lastName: this.state.lastName,
+          email: this.state.email,
           paymentMethodNonce: nonce,
         }),
       });
 
       const data = await response.json();
       if (data.success) {
-        setCreatedCustomerId(data.customerId);
-        setLog(`Customer created successfully! ID: ${data.customerId}`);
+        this.setState({
+          createdCustomerId: data.customerId,
+          log: `Customer created successfully! ID: ${data.customerId}`,
+        });
       } else {
-        setLog(`Error creating customer: ${data.error}`);
+        this.setState({ log: `Error creating customer: ${data.error}` });
       }
     } catch (err: any) {
       console.error("Error creating customer:", err);
-      setLog(`Error creating customer: ${err.message}`);
+      this.setState({ log: `Error creating customer: ${err.message}` });
     }
   };
 
-  return (
-    <div style={{ margin: "10px 0" }}>
-      <h2>Create Customer</h2>
-      <div>
-        <label>First Name:</label>
-        <input
-          type="text"
-          value={firstName}
-          onChange={(e) => setFirstName(e.target.value)}
-          style={{ marginRight: "10px" }}
-        />
-        <label>Last Name:</label>
-        <input
-          type="text"
-          value={lastName}
-          onChange={(e) => setLastName(e.target.value)}
-          style={{ marginRight: "10px" }}
-        />
-        <label>Email:</label>
-        <input
-          type="text"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          style={{ marginRight: "10px" }}
-        />
+  render() {
+    return (
+      <div style={{ margin: "10px 0" }}>
+        <h2>Create Customer</h2>
+        <div>
+          <label>First Name:</label>
+          <input
+            type="text"
+            value={this.state.firstName}
+            onChange={(e) => this.setState({ firstName: e.target.value })}
+            style={{ marginRight: "10px" }}
+          />
+          <label>Last Name:</label>
+          <input
+            type="text"
+            value={this.state.lastName}
+            onChange={(e) => this.setState({ lastName: e.target.value })}
+            style={{ marginRight: "10px" }}
+          />
+          <label>Email:</label>
+          <input
+            type="text"
+            value={this.state.email}
+            onChange={(e) => this.setState({ email: e.target.value })}
+            style={{ marginRight: "10px" }}
+          />
+        </div>
+        {/* Braintree Drop-In UI container */}
+        <div id="dropin-container" style={{ margin: "10px 0" }}></div>
+        <button onClick={this.handleCreateCustomer}>Create Customer</button>
+        <div style={{ margin: "5px 0" }}>
+          Current Customer ID:{" "}
+          <strong>{this.state.createdCustomerId || "None"}</strong>
+        </div>
+        <div>{this.state.log}</div>
       </div>
-      {/* Braintree Drop-In UI container */}
-      <div id="dropin-container" style={{ margin: "10px 0" }}></div>
-      <button onClick={handleCreateCustomer}>Create Customer</button>
-      <div style={{ margin: "5px 0" }}>
-        Current Customer ID: <strong>{createdCustomerId || "None"}</strong>
-      </div>
-      <div>{log}</div>
-    </div>
-  );
-};
+    );
+  }
+}
 
 // -------------------------------------------------------------------
-// 2. Regular Checkout Component (with its own handler)
+// 2. Regular Checkout Component (as an sComponent)
 // -------------------------------------------------------------------
-const RegularCheckout: React.FC = () => {
-  const [createdCustomerId, setCreatedCustomerId] = useState("");
-  const [amount, setAmount] = useState("10.00");
-  const [log, setLog] = useState("");
+export class RegularCheckout extends sComponent {
+  state = {
+    createdCustomerId: "",
+    amount: "10.00",
+    log: "",
+  };
 
-  const handleCheckout = async () => {
-    if (!createdCustomerId) {
-      setLog("No customer has been created yet.");
+  constructor(props: any) {
+    super(props);
+  }
+
+  handleCheckout = async () => {
+    if (!this.state.createdCustomerId) {
+      this.setState({ log: "No customer has been created yet." });
       return;
     }
 
@@ -174,52 +186,63 @@ const RegularCheckout: React.FC = () => {
       const response = await fetch(protocol + "://localhost:3000/checkout", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ customerId: createdCustomerId, amount }),
+        body: JSON.stringify({
+          customerId: this.state.createdCustomerId,
+          amount: this.state.amount,
+        }),
       });
 
       const data = await response.json();
       if (data.success) {
-        setLog(`Checkout successful! Transaction ID: ${data.transactionId}`);
+        this.setState({ log: `Checkout successful! Transaction ID: ${data.transactionId}` });
       } else {
-        setLog(`Error in checkout: ${data.error}`);
+        this.setState({ log: `Error in checkout: ${data.error}` });
       }
     } catch (err: any) {
       console.error("Error in checkout:", err);
-      setLog(`Error in checkout: ${err.message}`);
+      this.setState({ log: `Error in checkout: ${err.message}` });
     }
   };
 
-  return (
-    <div style={{ margin: "10px 0" }}>
-      <h2>Regular Checkout</h2>
-      <p>
-        Created Customer ID:{" "}
-        <strong>{createdCustomerId || "Not yet created"}</strong>
-      </p>
-      <label>Amount:</label>
-      <input
-        type="text"
-        value={amount}
-        onChange={(e) => setAmount(e.target.value)}
-        style={{ marginRight: "10px" }}
-      />
-      <button onClick={handleCheckout}>Checkout</button>
-      <div>{log}</div>
-    </div>
-  );
-};
+  render() {
+    return (
+      <div style={{ margin: "10px 0" }}>
+        <h2>Regular Checkout</h2>
+        <p>
+          Created Customer ID:{" "}
+          <strong>{this.state.createdCustomerId || "Not yet created"}</strong>
+        </p>
+        <label>Amount:</label>
+        <input
+          type="text"
+          value={this.state.amount}
+          onChange={(e) => this.setState({ amount: e.target.value })}
+          style={{ marginRight: "10px" }}
+        />
+        <button onClick={this.handleCheckout}>Checkout</button>
+        <div>{this.state.log}</div>
+      </div>
+    );
+  }
+}
 
 // -------------------------------------------------------------------
-// 3. Create Sub-Merchant Component (with its own handler)
+// 3. Create Sub-Merchant Component (as an sComponent)
 // -------------------------------------------------------------------
-const CreateSubMerchant: React.FC = () => {
-  const [subMerchantEmail, setSubMerchantEmail] = useState("");
-  const [subMerchantId, setSubMerchantId] = useState("");
-  const [log, setLog] = useState("");
+export class CreateSubMerchant extends sComponent {
+  state = {
+    subMerchantEmail: "",
+    subMerchantId: "",
+    log: "",
+  };
 
-  const handleCreateSubMerchant = async () => {
-    if (!subMerchantEmail) {
-      setLog("Please enter an email for the sub-merchant.");
+  constructor(props: any) {
+    super(props);
+  }
+
+  handleCreateSubMerchant = async () => {
+    if (!this.state.subMerchantEmail) {
+      this.setState({ log: "Please enter an email for the sub-merchant." });
       return;
     }
 
@@ -231,7 +254,7 @@ const CreateSubMerchant: React.FC = () => {
           individual: {
             firstName: "Sub", // Example static value; adjust as needed.
             lastName: "Merchant",
-            email: subMerchantEmail,
+            email: this.state.subMerchantEmail,
             phone: "3125551234",
             dateOfBirth: "10/9/1980",
             ssn: "1234",
@@ -252,56 +275,66 @@ const CreateSubMerchant: React.FC = () => {
 
       const data = await response.json();
       if (data.success) {
-        setSubMerchantId(data.subMerchantAccountId);
-        setLog(`Sub-merchant created successfully! ID: ${data.subMerchantAccountId}`);
+        this.setState({
+          subMerchantId: data.subMerchantAccountId,
+          log: `Sub-merchant created successfully! ID: ${data.subMerchantAccountId}`,
+        });
       } else {
-        setLog(`Error creating sub-merchant: ${data.error}`);
+        this.setState({ log: `Error creating sub-merchant: ${data.error}` });
       }
     } catch (err: any) {
       console.error("Error creating sub-merchant:", err);
-      setLog(`Error creating sub-merchant: ${err.message}`);
+      this.setState({ log: `Error creating sub-merchant: ${err.message}` });
     }
   };
 
-  return (
-    <div style={{ margin: "10px 0" }}>
-      <h2>Create Sub-Merchant</h2>
-      <p>
-        This simulates creating a new connected/partner merchant who can receive a
-        portion of a transaction split.
-      </p>
-      <label>Sub-Merchant Email:</label>
-      <input
-        type="text"
-        value={subMerchantEmail}
-        onChange={(e) => setSubMerchantEmail(e.target.value)}
-        style={{ marginRight: "10px" }}
-      />
-      <button onClick={handleCreateSubMerchant}>Create Sub-Merchant</button>
-      <div style={{ margin: "5px 0" }}>
-        Current Sub-Merchant ID: <strong>{subMerchantId || "None"}</strong>
+  render() {
+    return (
+      <div style={{ margin: "10px 0" }}>
+        <h2>Create Sub-Merchant</h2>
+        <p>
+          This simulates creating a new connected/partner merchant who can receive a
+          portion of a transaction split.
+        </p>
+        <label>Sub-Merchant Email:</label>
+        <input
+          type="text"
+          value={this.state.subMerchantEmail}
+          onChange={(e) => this.setState({ subMerchantEmail: e.target.value })}
+          style={{ marginRight: "10px" }}
+        />
+        <button onClick={this.handleCreateSubMerchant}>Create Sub-Merchant</button>
+        <div style={{ margin: "5px 0" }}>
+          Current Sub-Merchant ID: <strong>{this.state.subMerchantId || "None"}</strong>
+        </div>
+        <div>{this.state.log}</div>
       </div>
-      <div>{log}</div>
-    </div>
-  );
-};
+    );
+  }
+}
 
 // -------------------------------------------------------------------
-// 4. Transaction with Split Component (with its own handler)
+// 4. Transaction with Split Component (as an sComponent)
 // -------------------------------------------------------------------
-const TransactionWithSplit: React.FC = () => {
-  const [subMerchantId, setSubMerchantId] = useState("");
-  const [createdCustomerId, setCreatedCustomerId] = useState("");
-  const [splitAmount, setSplitAmount] = useState("50.00");
-  const [log, setLog] = useState("");
+export class TransactionWithSplit extends sComponent {
+  state = {
+    subMerchantId: "",
+    createdCustomerId: "",
+    splitAmount: "50.00",
+    log: "",
+  };
 
-  const handleTransactionWithSplit = async () => {
-    if (!subMerchantId) {
-      setLog("No sub-merchant has been created yet.");
+  constructor(props: any) {
+    super(props);
+  }
+
+  handleTransactionWithSplit = async () => {
+    if (!this.state.subMerchantId) {
+      this.setState({ log: "No sub-merchant has been created yet." });
       return;
     }
-    if (!createdCustomerId) {
-      setLog("No customer has been created yet.");
+    if (!this.state.createdCustomerId) {
+      this.setState({ log: "No customer has been created yet." });
       return;
     }
 
@@ -310,193 +343,201 @@ const TransactionWithSplit: React.FC = () => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          subMerchantAccountId: subMerchantId,
-          customerId: createdCustomerId,
-          amount: splitAmount,
+          subMerchantAccountId: this.state.subMerchantId,
+          customerId: this.state.createdCustomerId,
+          amount: this.state.splitAmount,
         }),
       });
 
       const data = await response.json();
       if (data.success) {
-        setLog(`Transaction with split successful! Transaction ID: ${data.transactionId}`);
+        this.setState({ log: `Transaction with split successful! Transaction ID: ${data.transactionId}` });
       } else {
-        setLog(`Error in split transaction: ${data.error}`);
+        this.setState({ log: `Error in split transaction: ${data.error}` });
       }
     } catch (err: any) {
       console.error("Error in split transaction:", err);
-      setLog(`Error in split transaction: ${err.message}`);
+      this.setState({ log: `Error in split transaction: ${err.message}` });
     }
   };
 
-  return (
-    <div style={{ margin: "10px 0" }}>
-      <h2>Transaction with 98/2 Split</h2>
-      <p>
-        This simulates charging the existing customer while sending 98% to the
-        sub-merchant and 2% to your master account.
-      </p>
-      <p>
-        Sub-Merchant ID: <strong>{subMerchantId || "Not yet created"}</strong>
-      </p>
-      <label>Split Transaction Amount:</label>
-      <input
-        type="text"
-        value={splitAmount}
-        onChange={(e) => setSplitAmount(e.target.value)}
-        style={{ marginRight: "10px" }}
-      />
-      <button onClick={handleTransactionWithSplit}>Pay Sub-Merchant (98%)</button>
-      <div>{log}</div>
-    </div>
-  );
-};
+  render() {
+    return (
+      <div style={{ margin: "10px 0" }}>
+        <h2>Transaction with 98/2 Split</h2>
+        <p>
+          This simulates charging the existing customer while sending 98% to the
+          sub-merchant and 2% to your master account.
+        </p>
+        <p>
+          Sub-Merchant ID: <strong>{this.state.subMerchantId || "Not yet created"}</strong>
+        </p>
+        <label>Split Transaction Amount:</label>
+        <input
+          type="text"
+          value={this.state.splitAmount}
+          onChange={(e) => this.setState({ splitAmount: e.target.value })}
+          style={{ marginRight: "10px" }}
+        />
+        <button onClick={this.handleTransactionWithSplit}>Pay Sub-Merchant (98%)</button>
+        <div>{this.state.log}</div>
+      </div>
+    );
+  }
+}
 
 // -------------------------------------------------------------------
-// 5. Data Listings Component (with its own refresh handlers)
+// 5. Data Listings Component (as an sComponent)
 // -------------------------------------------------------------------
-const DataListings: React.FC = () => {
-  const [transactions, setTransactions] = useState<any[]>([]);
-  const [customers, setCustomers] = useState<any[]>([]);
-  const [submerchants, setSubmerchants] = useState<any[]>([]);
-  const [log, setLog] = useState("");
+export class DataListings extends sComponent {
+  state = {
+    transactions: [] as any[],
+    customers: [] as any[],
+    submerchants: [] as any[],
+    log: "",
+  };
 
-  const handleFetchTransactions = async () => {
+  constructor(props: any) {
+    super(props);
+  }
+
+  handleFetchTransactions = async () => {
     try {
       const response = await fetch(protocol + "://localhost:3000/transactions");
       const data = await response.json();
       if (data.transactions) {
-        setTransactions(data.transactions);
-        setLog("Transactions fetched successfully");
+        this.setState({ transactions: data.transactions, log: "Transactions fetched successfully" });
       } else {
-        setLog("Error fetching transactions");
+        this.setState({ log: "Error fetching transactions" });
       }
     } catch (err: any) {
-      setLog("Error fetching transactions: " + err.message);
+      this.setState({ log: "Error fetching transactions: " + err.message });
     }
   };
 
-  const handleFetchCustomers = async () => {
+  handleFetchCustomers = async () => {
     try {
       const response = await fetch(protocol + "://localhost:3000/customers");
       const data = await response.json();
       if (data.customers) {
-        setCustomers(data.customers);
-        setLog("Customers fetched successfully");
+        this.setState({ customers: data.customers, log: "Customers fetched successfully" });
       } else {
-        setLog("Error fetching customers");
+        this.setState({ log: "Error fetching customers" });
       }
     } catch (err: any) {
-      setLog("Error fetching customers: " + err.message);
+      this.setState({ log: "Error fetching customers: " + err.message });
     }
   };
 
-  const handleFetchSubmerchants = async () => {
+  handleFetchSubmerchants = async () => {
     try {
       const response = await fetch(protocol + "://localhost:3000/submerchants");
       const data = await response.json();
       if (data.submerchants) {
-        setSubmerchants(data.submerchants);
-        setLog("Submerchants fetched successfully");
+        this.setState({ submerchants: data.submerchants, log: "Submerchants fetched successfully" });
       } else {
-        setLog("Error fetching submerchants");
+        this.setState({ log: "Error fetching submerchants" });
       }
     } catch (err: any) {
-      setLog("Error fetching submerchants: " + err.message);
+      this.setState({ log: "Error fetching submerchants: " + err.message });
     }
   };
 
-  return (
-    <div style={{ margin: "10px 0" }}>
-      <h2>Data Listings</h2>
-      <div style={{ marginBottom: "10px" }}>
-        <button onClick={handleFetchTransactions}>Refresh Transactions</button>
-        <button onClick={handleFetchCustomers} style={{ marginLeft: "10px" }}>
-          Refresh Customers
-        </button>
-        <button onClick={handleFetchSubmerchants} style={{ marginLeft: "10px" }}>
-          Refresh Submerchants
-        </button>
+  render() {
+    const { transactions, customers, submerchants, log } = this.state;
+    return (
+      <div style={{ margin: "10px 0" }}>
+        <h2>Data Listings</h2>
+        <div style={{ marginBottom: "10px" }}>
+          <button onClick={this.handleFetchTransactions}>Refresh Transactions</button>
+          <button onClick={this.handleFetchCustomers} style={{ marginLeft: "10px" }}>
+            Refresh Customers
+          </button>
+          <button onClick={this.handleFetchSubmerchants} style={{ marginLeft: "10px" }}>
+            Refresh Submerchants
+          </button>
+        </div>
+
+        {/* Transactions Table */}
+        <h3>Transactions</h3>
+        <table border={1} cellPadding={5}>
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Status</th>
+              <th>Amount</th>
+              <th>Created At</th>
+            </tr>
+          </thead>
+          <tbody>
+            {transactions.length > 0 ? (
+              transactions.map((tx, idx) => (
+                <tr key={idx}>
+                  <td>{tx.id}</td>
+                  <td>{tx.status}</td>
+                  <td>{tx.amount}</td>
+                  <td>{tx.createdAt ? new Date(tx.createdAt).toLocaleString() : ""}</td>
+                </tr>
+              ))
+            ) : (
+              <tr>
+                <td colSpan={4}>No transactions found</td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+
+        {/* Customers Table */}
+        <h3>Customers</h3>
+        <table border={1} cellPadding={5}>
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Email</th>
+            </tr>
+          </thead>
+          <tbody>
+            {customers.length > 0 ? (
+              customers.map((cust, idx) => (
+                <tr key={idx}>
+                  <td>{cust.id}</td>
+                  <td>{cust.email}</td>
+                </tr>
+              ))
+            ) : (
+              <tr>
+                <td colSpan={2}>No customers found</td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+
+        {/* Submerchants Table */}
+        <h3>Submerchants</h3>
+        <table border={1} cellPadding={5}>
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            {submerchants.length > 0 ? (
+              submerchants.map((sub, idx) => (
+                <tr key={idx}>
+                  <td>{sub.id || sub.merchantAccount?.id}</td>
+                  <td>{sub.status || sub.merchantAccount?.status || "N/A"}</td>
+                </tr>
+              ))
+            ) : (
+              <tr>
+                <td colSpan={2}>No submerchants found</td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+        <div>{log}</div>
       </div>
-
-      {/* Transactions Table */}
-      <h3>Transactions</h3>
-      <table border={1} cellPadding={5}>
-        <thead>
-          <tr>
-            <th>ID</th>
-            <th>Status</th>
-            <th>Amount</th>
-            <th>Created At</th>
-          </tr>
-        </thead>
-        <tbody>
-          {transactions.length > 0 ? (
-            transactions.map((tx, idx) => (
-              <tr key={idx}>
-                <td>{tx.id}</td>
-                <td>{tx.status}</td>
-                <td>{tx.amount}</td>
-                <td>{tx.createdAt ? new Date(tx.createdAt).toLocaleString() : ""}</td>
-              </tr>
-            ))
-          ) : (
-            <tr>
-              <td colSpan={4}>No transactions found</td>
-            </tr>
-          )}
-        </tbody>
-      </table>
-
-      {/* Customers Table */}
-      <h3>Customers</h3>
-      <table border={1} cellPadding={5}>
-        <thead>
-          <tr>
-            <th>ID</th>
-            <th>Email</th>
-          </tr>
-        </thead>
-        <tbody>
-          {customers.length > 0 ? (
-            customers.map((cust, idx) => (
-              <tr key={idx}>
-                <td>{cust.id}</td>
-                <td>{cust.email}</td>
-              </tr>
-            ))
-          ) : (
-            <tr>
-              <td colSpan={2}>No customers found</td>
-            </tr>
-          )}
-        </tbody>
-      </table>
-
-      {/* Submerchants Table */}
-      <h3>Submerchants</h3>
-      <table border={1} cellPadding={5}>
-        <thead>
-          <tr>
-            <th>ID</th>
-            <th>Status</th>
-          </tr>
-        </thead>
-        <tbody>
-          {submerchants.length > 0 ? (
-            submerchants.map((sub, idx) => (
-              <tr key={idx}>
-                <td>{sub.id || sub.merchantAccount?.id}</td>
-                <td>{sub.status || sub.merchantAccount?.status || "N/A"}</td>
-              </tr>
-            ))
-          ) : (
-            <tr>
-              <td colSpan={2}>No submerchants found</td>
-            </tr>
-          )}
-        </tbody>
-      </table>
-      <div>{log}</div>
-    </div>
-  );
-};
+    );
+  }
+}
