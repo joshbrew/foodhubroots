@@ -800,7 +800,7 @@ gateway.customer.update("theCustomerId", {
 export { 
     AddressResponse, DisputeResponse, CustomerResponse, TransactionResponse,
     SubscriptionResponse, DiscountResponse, CreditCardResponse, VenmoAccountResponse, 
-    UsBankAccountResponse, MerchantAccountResponse, SepaDebitAccountResponse, 
+    UsBankAccountResponse, MerchantAccountResponse, SepaDebitAccountResponse, VisaCheckoutCardResponse,
     UsBankAccountVerificationResponse, ClientTokenRequest, CustomerCreateRequest,
-    CreditCardCreateRequest, CreditCardVerificationRequest
+    CreditCardCreateRequest, CreditCardVerificationRequest, SubMerchantAccountWebhookNotification
 }
