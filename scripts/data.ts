@@ -107,7 +107,7 @@
         state: string;
         city: string;
         zipcode: string;
-      };
+      }[];
       geo?: {
         type: "Point";
         coordinates: [number, number];
@@ -333,7 +333,7 @@
           state: string;
           country: string;
           zipcode: string;
-        };
+        }[];
         geo?: {
           type: "Point";
           coordinates: [number, number];
@@ -491,12 +491,12 @@
       fulfillment: {},
       compliance: {},
       location: {
-        address: {
+        address: [{
           country: "",
           state: "",
           city: "",
           zipcode: "",
-        },
+        }],
       },
       media: {
         images: {},
