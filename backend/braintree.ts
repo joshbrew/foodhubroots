@@ -1,7 +1,7 @@
 import fs from 'fs';
 import querystring from 'querystring';
 import braintree from 'braintree';
-import { getRequestBody, setHeaders } from './util';
+import { getRequestBody, Routes, setHeaders } from './util';
 
 // Set up the Braintree Gateway.
 export const btGateway = new braintree.BraintreeGateway({
