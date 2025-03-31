@@ -1,397 +1,281 @@
 /**
  * # MongoDB Operations & Routes Module
  *
- * This module serves as the central hub for managing MongoDB connectivity and CRUD
- * operations for multiple data sets including:
+ * This module manages MongoDB connectivity and CRUD operations for the Roots FoodHub MVP.
+ * It covers the following data sets:
  *
- * - **Product Listings:** Manages product data using the "productListings" collection.
- * - **Seller Profiles:** Manages seller information using the "sellerProfiles" collection.
- * - **User Profiles:** Manages user account data using the "userProfiles" collection.
- * - **Inventory Items:** Manages product inventory levels.
- * - **Orders:** Manages customer orders.
- * - **Submerchants:** Manages professional submerchant records.
- * - **Customer Service Tickets:** Manages support tickets.
+ * - **Product Listings:** Stored in the "productListings" collection.
+ *   (Uses the ProductListing type from ../scripts/data.ts, which includes embedded inventory info.)
  *
- * The HTTP routes have been split into GET and POST endpoints only, with explicit naming
- * (e.g., `/ticket_update` instead of using a PUT method). GET routes are used for data retrieval,
- * while POST routes cover create, update, and delete operations.
+ * - **Seller Profiles:** Stored in the "sellerProfiles" collection.
+ *   (Uses the SellerProfile type from ../scripts/data.ts. Seller profiles store all local seller data.
+ *    Braintree is used for detailed submerchant information.)
+ *
+ * - **User Profiles:** Stored in the "userProfiles" collection.
+ *   (Uses the UserProfile type from ../scripts/data.ts.)
+ *
+ * - **Orders:** Stored in the "orders" collection.
+ *   **Note:** Braintree already stores detailed order/transaction info. This collection is optional
+ *   and intended only for local caching or custom processing.
+ *
+ * - **Tickets:** Stores customer service support tickets.
+ *
+ * All endpoints are exposed as GET or POST routes with a `/db_` prefix and explicit operation names.
  *
  * ## Usage
  *
- * - Ensure that the `MONGODB_URI` environment variable is set.
- * - Call `initMongoClient()` on server startup.
- * - Use the provided CRUD functions in your application logic or via the exposed RESTful endpoints.
+ * 1. Ensure the `MONGODB_URI` environment variable is set.
+ * 2. Call `initMongoClient()` on server startup.
+ * 3. Use the provided CRUD functions directly or via the exposed HTTP endpoints.
  */
 
 import { getEnvVar, getRequestBody, Routes, setHeaders } from "./util";
 import { MongoClient, Db } from 'mongodb';
-import {
-    ProductListing, SellerProfile, UserProfile, 
-    createProductListing, createSellerProfile, createUserProfile
+// Import core types and helper functions from Roots FoodHub MVP.
+import { 
+  ProductListing, SellerProfile, UserProfile, Order, Ticket, 
+  createProductListing, createSellerProfile, createUserProfile
 } from '../scripts/data';
 
-/* ------------------------------------------------------------------
-   New Types for Additional Collections
---------------------------------------------------------------------
-   These interfaces represent additional collections.
-*/
 
-// InventoryItem represents an item in the product inventory.
-export interface InventoryItem {
-  sku: string;
-  name: string;
-  quantity: number;
-  price: number;
-  description?: string;
-  category?: string;
-  createdAt: Date;
-  updatedAt: Date;
-}
 
-// Order represents a customer order.
-export interface Order {
-  orderId: string;
-  customerId: string;
-  items: Array<{ productId: string; quantity: number; price: number }>;
-  total: number;
-  status: "pending" | "completed" | "cancelled";
-  createdAt: Date;
-  updatedAt: Date;
-}
 
-// Submerchant represents a professional submerchant record.
-export interface Submerchant {
-  id: string;
-  name: string;
-  merchantAccountId: string;
-  email: string;
-  phone?: string;
-  createdAt: Date;
-  updatedAt: Date;
-}
-
-// Ticket represents a customer service ticket.
-export interface Ticket {
-  ticketId: string;
-  userId: string;
-  subject: string;
-  message: string;
-  status: "open" | "pending" | "closed";
-  createdAt: Date;
-  updatedAt: Date;
-}
 
 /* ============================================================
-   Global MongoDB Object
+   Global MongoDB Object & Initialization
    ============================================================
    The `mongo` object holds the MongoClient instance and the current database instance.
 */
 export const mongo = {} as { 
-    client?: MongoClient;
-    db?: Db;
+  client?: MongoClient;
+  db?: Db;
 };
 
-/* ============================================================
-   MongoDB Client Initialization
-   ============================================================
-   Initializes the MongoDB client using the MONGODB_URI environment variable.
-*/
+/**
+ * Initializes the MongoDB client using the MONGODB_URI environment variable.
+ * Sets the global `mongo.db` instance for use in all operations.
+ */
 export async function initMongoClient() {
-    await new Promise((res, rej) => {
-        const URI = getEnvVar('MONGODB_URI', '');
-        if (URI) {
-          const client = new MongoClient(URI);
-          mongo.db = client.db(); // Database name is derived from the connection string
-          console.log(`MongoDB Client Connected!`);
-          res(true);
-        } else {
-            console.log(`No MongoDB URI provided`);
-            rej(undefined);
-        }
-    });
+  await new Promise((res, rej) => {
+    const URI = getEnvVar('MONGODB_URI', '');
+    if (URI) {
+      const client = new MongoClient(URI);
+      mongo.db = client.db(); // Database name is derived from the connection string
+      console.log(`MongoDB Client Connected!`);
+      res(true);
+    } else {
+      console.log(`No MongoDB URI provided`);
+      rej(undefined);
+    }
+  });
 }
 
 /* ============================================================
-   ProductListing Operations
+   ProductListing Operations (productListings Collection)
    ============================================================
-   CRUD operations for the "productListings" collection.
+   CRUD functions for product listings.
 */
 
 /**
- * Inserts a new ProductListing document.
+ * Creates a new ProductListing document.
  *
- * **Route (POST):** /productListing_create
+ * **Route (POST):** /db_productListing_create
  */
 export async function createProductListingInDB(
-    props: Partial<ProductListing>
+  props: Partial<ProductListing>
 ): Promise<ProductListing> {
-    if (!mongo.db) throw new Error("MongoDB not initialised");
-    const newListing = createProductListing(props);
-    const result = await mongo.db.collection('productListings').insertOne(newListing);
-    if (!newListing.listing_id) {
-      newListing.listing_id = result.insertedId.toString();
-      await mongo.db.collection('productListings').updateOne(
-        { _id: result.insertedId },
-        { $set: { listing_id: newListing.listing_id } }
-      );
-    }
-    return newListing;
+  if (!mongo.db) throw new Error("MongoDB not initialised");
+  const newListing = createProductListing(props);
+  const result = await mongo.db.collection('productListings').insertOne(newListing);
+  if (!newListing.listing_id) {
+    newListing.listing_id = result.insertedId.toString();
+    await mongo.db.collection('productListings').updateOne(
+      { _id: result.insertedId },
+      { $set: { listing_id: newListing.listing_id } }
+    );
+  }
+  return newListing;
 }
 
 /**
- * Retrieves a ProductListing document by its listing_id.
+ * Retrieves a ProductListing by its listing_id.
  *
- * **Route (GET):** /productListing_get?listing_id=...
+ * **Route (GET):** /db_productListing_get?listing_id=...
  */
 export async function getProductListingFromDB(listingId: string): Promise<ProductListing | null> {
-    if (!mongo.db) throw new Error("MongoDB not initialised");
-    return await mongo.db.collection('productListings').findOne({ listing_id: listingId }) as ProductListing | null;
+  if (!mongo.db) throw new Error("MongoDB not initialised");
+  return await mongo.db.collection('productListings').findOne({ listing_id: listingId }) as ProductListing | null;
 }
 
 /**
- * Updates a ProductListing document by its listing_id.
+ * Updates an existing ProductListing document.
  *
- * **Route (POST):** /productListing_update?listing_id=...
+ * **Route (POST):** /db_productListing_update?listing_id=...
  */
 export async function updateProductListingInDB(
-    listingId: string,
-    updates: Partial<ProductListing>
+  listingId: string,
+  updates: Partial<ProductListing>
 ): Promise<ProductListing | null> {
-    if (!mongo.db) throw new Error("MongoDB not initialised");
-    await mongo.db.collection('productListings').updateOne(
-      { listing_id: listingId },
-      { $set: updates }
-    );
-    return await mongo.db.collection('productListings').findOne({ listing_id: listingId }) as ProductListing | null;
+  if (!mongo.db) throw new Error("MongoDB not initialised");
+  await mongo.db.collection('productListings').updateOne(
+    { listing_id: listingId },
+    { $set: updates }
+  );
+  return await mongo.db.collection('productListings').findOne({ listing_id: listingId }) as ProductListing | null;
 }
 
 /**
  * Deletes a ProductListing document.
  *
- * **Route (POST):** /productListing_delete?listing_id=...
+ * **Route (POST):** /db_productListing_delete?listing_id=...
  */
 export async function deleteProductListingInDB(listingId: string): Promise<boolean> {
-    if (!mongo.db) throw new Error("MongoDB not initialised");
-    const result = await mongo.db.collection('productListings').deleteOne({ listing_id: listingId });
-    return result.deletedCount === 1;
+  if (!mongo.db) throw new Error("MongoDB not initialised");
+  const result = await mongo.db.collection('productListings').deleteOne({ listing_id: listingId });
+  return result.deletedCount === 1;
 }
 
 /* ============================================================
-   SellerProfile Operations
+   SellerProfile Operations (sellerProfiles Collection)
    ============================================================
-   CRUD operations for the "sellerProfiles" collection.
+   CRUD functions for seller profiles.
 */
 
 /**
- * Inserts a new SellerProfile document.
+ * Creates a new SellerProfile document.
  *
- * **Route (POST):** /sellerProfile_create
+ * **Route (POST):** /db_sellerProfile_create
  */
 export async function createSellerProfileInDB(
-    props: Partial<SellerProfile>
+  props: Partial<SellerProfile>
 ): Promise<SellerProfile> {
-    if (!mongo.db) throw new Error("MongoDB not initialised");
-    const newProfile = createSellerProfile(props);
-    const result = await mongo.db.collection('sellerProfiles').insertOne(newProfile);
-    if (!newProfile.id) {
-      newProfile.id = result.insertedId.toString();
-      await mongo.db.collection('sellerProfiles').updateOne(
-        { _id: result.insertedId },
-        { $set: { id: newProfile.id } }
-      );
-    }
-    return newProfile;
+  if (!mongo.db) throw new Error("MongoDB not initialised");
+  const newProfile = createSellerProfile(props);
+  const result = await mongo.db.collection('sellerProfiles').insertOne(newProfile);
+  if (!newProfile.id) {
+    newProfile.id = result.insertedId.toString();
+    await mongo.db.collection('sellerProfiles').updateOne(
+      { _id: result.insertedId },
+      { $set: { id: newProfile.id } }
+    );
+  }
+  return newProfile;
 }
 
 /**
- * Retrieves a SellerProfile document by its id.
+ * Retrieves a SellerProfile by its id.
  *
- * **Route (GET):** /sellerProfile_get?id=...
+ * **Route (GET):** /db_sellerProfile_get?id=...
  */
 export async function getSellerProfileFromDB(profileId: string): Promise<SellerProfile | null> {
-    if (!mongo.db) throw new Error("MongoDB not initialised");
-    return await mongo.db.collection('sellerProfiles').findOne({ id: profileId }) as SellerProfile | null;
+  if (!mongo.db) throw new Error("MongoDB not initialised");
+  return await mongo.db.collection('sellerProfiles').findOne({ id: profileId }) as SellerProfile | null;
 }
 
 /**
- * Updates a SellerProfile document by its id.
+ * Updates a SellerProfile document.
  *
- * **Route (POST):** /sellerProfile_update?id=...
+ * **Route (POST):** /db_sellerProfile_update?id=...
  */
 export async function updateSellerProfileInDB(
-    profileId: string,
-    updates: Partial<SellerProfile>
+  profileId: string,
+  updates: Partial<SellerProfile>
 ): Promise<SellerProfile | null> {
-    if (!mongo.db) throw new Error("MongoDB not initialised");
-    await mongo.db.collection('sellerProfiles').updateOne(
-      { id: profileId },
-      { $set: updates }
-    );
-    return await mongo.db.collection('sellerProfiles').findOne({ id: profileId }) as SellerProfile | null;
+  if (!mongo.db) throw new Error("MongoDB not initialised");
+  await mongo.db.collection('sellerProfiles').updateOne(
+    { id: profileId },
+    { $set: updates }
+  );
+  return await mongo.db.collection('sellerProfiles').findOne({ id: profileId }) as SellerProfile | null;
 }
 
 /**
  * Deletes a SellerProfile document.
  *
- * **Route (POST):** /sellerProfile_delete?id=...
+ * **Route (POST):** /db_sellerProfile_delete?id=...
  */
 export async function deleteSellerProfileInDB(profileId: string): Promise<boolean> {
-    if (!mongo.db) throw new Error("MongoDB not initialised");
-    const result = await mongo.db.collection('sellerProfiles').deleteOne({ id: profileId });
-    return result.deletedCount === 1;
+  if (!mongo.db) throw new Error("MongoDB not initialised");
+  const result = await mongo.db.collection('sellerProfiles').deleteOne({ id: profileId });
+  return result.deletedCount === 1;
 }
 
 /* ============================================================
-   UserProfile Operations
+   UserProfile Operations (userProfiles Collection)
    ============================================================
-   CRUD operations for the "userProfiles" collection.
+   CRUD functions for user profiles.
 */
 
 /**
- * Inserts a new UserProfile document.
+ * Creates a new UserProfile document.
  *
- * **Route (POST):** /userProfile_create
+ * **Route (POST):** /db_userProfile_create
  */
 export async function createUserProfileInDB(
-    props: Partial<UserProfile>
+  props: Partial<UserProfile>
 ): Promise<UserProfile> {
-    if (!mongo.db) throw new Error("MongoDB not initialised");
-    const newUser = createUserProfile(props);
-    const result = await mongo.db.collection('userProfiles').insertOne(newUser);
-    if (!newUser.id) {
-      newUser.id = result.insertedId.toString();
-      await mongo.db.collection('userProfiles').updateOne(
-        { _id: result.insertedId },
-        { $set: { id: newUser.id } }
-      );
-    }
-    return newUser;
+  if (!mongo.db) throw new Error("MongoDB not initialised");
+  const newUser = createUserProfile(props);
+  const result = await mongo.db.collection('userProfiles').insertOne(newUser);
+  if (!newUser.id) {
+    newUser.id = result.insertedId.toString();
+    await mongo.db.collection('userProfiles').updateOne(
+      { _id: result.insertedId },
+      { $set: { id: newUser.id } }
+    );
+  }
+  return newUser;
 }
 
 /**
- * Retrieves a UserProfile document by its id.
+ * Retrieves a UserProfile by its id.
  *
- * **Route (GET):** /userProfile_get?id=...
+ * **Route (GET):** /db_userProfile_get?id=...
  */
 export async function getUserProfileFromDB(userId: string): Promise<UserProfile | null> {
-    if (!mongo.db) throw new Error("MongoDB not initialised");
-    return await mongo.db.collection('userProfiles').findOne({ id: userId }) as UserProfile | null;
+  if (!mongo.db) throw new Error("MongoDB not initialised");
+  return await mongo.db.collection('userProfiles').findOne({ id: userId }) as UserProfile | null;
 }
 
 /**
- * Updates a UserProfile document by its id.
+ * Updates a UserProfile document.
  *
- * **Route (POST):** /userProfile_update?id=...
+ * **Route (POST):** /db_userProfile_update?id=...
  */
 export async function updateUserProfileInDB(
-    userId: string,
-    updates: Partial<UserProfile>
+  userId: string,
+  updates: Partial<UserProfile>
 ): Promise<UserProfile | null> {
-    if (!mongo.db) throw new Error("MongoDB not initialised");
-    await mongo.db.collection('userProfiles').updateOne(
-      { id: userId },
-      { $set: updates }
-    );
-    return await mongo.db.collection('userProfiles').findOne({ id: userId }) as UserProfile | null;
+  if (!mongo.db) throw new Error("MongoDB not initialised");
+  await mongo.db.collection('userProfiles').updateOne(
+    { id: userId },
+    { $set: updates }
+  );
+  return await mongo.db.collection('userProfiles').findOne({ id: userId }) as UserProfile | null;
 }
 
 /**
  * Deletes a UserProfile document.
  *
- * **Route (POST):** /userProfile_delete?id=...
+ * **Route (POST):** /db_userProfile_delete?id=...
  */
 export async function deleteUserProfileInDB(userId: string): Promise<boolean> {
-    if (!mongo.db) throw new Error("MongoDB not initialised");
-    const result = await mongo.db.collection('userProfiles').deleteOne({ id: userId });
-    return result.deletedCount === 1;
-}
-
-/* ============================================================
-   InventoryItem Operations
-   ============================================================
-   CRUD operations for the "inventoryItems" collection.
-*/
-
-/**
- * Inserts a new InventoryItem document.
- *
- * **Route (POST):** /inventory_create
- */
-export async function createInventoryItemInDB(
-  props: Partial<InventoryItem>
-): Promise<InventoryItem> {
   if (!mongo.db) throw new Error("MongoDB not initialised");
-  // Set default timestamps
-  const newItem: InventoryItem = {
-    sku: props.sku || '',
-    name: props.name || '',
-    quantity: props.quantity || 0,
-    price: props.price || 0,
-    description: props.description,
-    category: props.category,
-    createdAt: new Date(),
-    updatedAt: new Date()
-  };
-  await mongo.db.collection('inventoryItems').insertOne(newItem);
-  return newItem;
-}
-
-/**
- * Retrieves an InventoryItem by its SKU.
- *
- * **Route (GET):** /inventory_get?sku=...
- */
-export async function getInventoryItemFromDB(sku: string): Promise<InventoryItem | null> {
-  if (!mongo.db) throw new Error("MongoDB not initialised");
-  return await mongo.db.collection('inventoryItems').findOne({ sku }) as InventoryItem | null;
-}
-
-/**
- * Updates an InventoryItem by its SKU.
- *
- * **Route (POST):** /inventory_update?sku=...
- */
-export async function updateInventoryItemInDB(
-  sku: string,
-  updates: Partial<InventoryItem>
-): Promise<InventoryItem | null> {
-  if (!mongo.db) throw new Error("MongoDB not initialised");
-  updates.updatedAt = new Date();
-  await mongo.db.collection('inventoryItems').updateOne({ sku }, { $set: updates });
-  return await mongo.db.collection('inventoryItems').findOne({ sku }) as InventoryItem | null;
-}
-
-/**
- * Deletes an InventoryItem by its SKU.
- *
- * **Route (POST):** /inventory_delete?sku=...
- */
-export async function deleteInventoryItemInDB(sku: string): Promise<boolean> {
-  if (!mongo.db) throw new Error("MongoDB not initialised");
-  const result = await mongo.db.collection('inventoryItems').deleteOne({ sku });
+  const result = await mongo.db.collection('userProfiles').deleteOne({ id: userId });
   return result.deletedCount === 1;
 }
 
-/**
- * Lists all InventoryItems.
- *
- * **Route (GET):** /inventory_list
- */
-export async function listInventoryItemsInDB(): Promise<InventoryItem[]> {
-  if (!mongo.db) throw new Error("MongoDB not initialised");
-  return await mongo.db.collection('inventoryItems').find({}).toArray() as InventoryItem[];
-}
-
 /* ============================================================
-   Order Operations
+   Order Operations (orders Collection)
    ============================================================
-   CRUD operations for the "orders" collection.
+   CRUD functions for orders.
+   NOTE: Braintree stores detailed transaction/order info. This collection is optional.
 */
 
 /**
- * Inserts a new Order document.
+ * Creates a new Order document.
  *
- * **Route (POST):** /order_create
+ * **Route (POST):** /db_order_create
  */
 export async function createOrderInDB(
   props: Partial<Order>
@@ -413,17 +297,17 @@ export async function createOrderInDB(
 /**
  * Retrieves an Order by its orderId.
  *
- * **Route (GET):** /order_get?orderId=...
+ * **Route (GET):** /db_order_get?orderId=...
  */
 export async function getOrderFromDB(orderId: string): Promise<Order | null> {
   if (!mongo.db) throw new Error("MongoDB not initialised");
-  return await mongo.db.collection('orders').findOne({ orderId }) as Order | null;
+  return await mongo.db.collection('orders').findOne({ orderId }) as any as Order | null;
 }
 
 /**
- * Updates an Order by its orderId.
+ * Updates an Order document.
  *
- * **Route (POST):** /order_update?orderId=...
+ * **Route (POST):** /db_order_update?orderId=...
  */
 export async function updateOrderInDB(
   orderId: string,
@@ -436,9 +320,9 @@ export async function updateOrderInDB(
 }
 
 /**
- * Deletes an Order by its orderId.
+ * Deletes an Order document.
  *
- * **Route (POST):** /order_delete?orderId=...
+ * **Route (POST):** /db_order_delete?orderId=...
  */
 export async function deleteOrderInDB(orderId: string): Promise<boolean> {
   if (!mongo.db) throw new Error("MongoDB not initialised");
@@ -449,97 +333,23 @@ export async function deleteOrderInDB(orderId: string): Promise<boolean> {
 /**
  * Lists all Orders.
  *
- * **Route (GET):** /order_list
+ * **Route (GET):** /db_order_list
  */
 export async function listOrdersInDB(): Promise<Order[]> {
   if (!mongo.db) throw new Error("MongoDB not initialised");
-  return await mongo.db.collection('orders').find({}).toArray() as Order[];
+  return await mongo.db.collection('orders').find({}).toArray() as any as Order[];
 }
 
 /* ============================================================
-   Submerchant Operations
+   Ticket Operations (tickets Collection)
    ============================================================
-   CRUD operations for the "submerchants" collection.
+   CRUD functions for customer service tickets.
 */
 
 /**
- * Inserts a new Submerchant document.
+ * Creates a new Ticket document.
  *
- * **Route (POST):** /submerchant_create
- */
-export async function createSubmerchantInDB(
-  props: Partial<Submerchant>
-): Promise<Submerchant> {
-  if (!mongo.db) throw new Error("MongoDB not initialised");
-  const newSubmerchant: Submerchant = {
-    id: props.id || '',
-    name: props.name || '',
-    merchantAccountId: props.merchantAccountId || '',
-    email: props.email || '',
-    phone: props.phone,
-    createdAt: new Date(),
-    updatedAt: new Date()
-  };
-  await mongo.db.collection('submerchants').insertOne(newSubmerchant);
-  return newSubmerchant;
-}
-
-/**
- * Retrieves a Submerchant by its id.
- *
- * **Route (GET):** /submerchant_get?id=...
- */
-export async function getSubmerchantFromDB(id: string): Promise<Submerchant | null> {
-  if (!mongo.db) throw new Error("MongoDB not initialised");
-  return await mongo.db.collection('submerchants').findOne({ id }) as Submerchant | null;
-}
-
-/**
- * Updates a Submerchant by its id.
- *
- * **Route (POST):** /submerchant_update?id=...
- */
-export async function updateSubmerchantInDB(
-  id: string,
-  updates: Partial<Submerchant>
-): Promise<Submerchant | null> {
-  if (!mongo.db) throw new Error("MongoDB not initialised");
-  updates.updatedAt = new Date();
-  await mongo.db.collection('submerchants').updateOne({ id }, { $set: updates });
-  return await mongo.db.collection('submerchants').findOne({ id }) as Submerchant | null;
-}
-
-/**
- * Deletes a Submerchant by its id.
- *
- * **Route (POST):** /submerchant_delete?id=...
- */
-export async function deleteSubmerchantInDB(id: string): Promise<boolean> {
-  if (!mongo.db) throw new Error("MongoDB not initialised");
-  const result = await mongo.db.collection('submerchants').deleteOne({ id });
-  return result.deletedCount === 1;
-}
-
-/**
- * Lists all Submerchants.
- *
- * **Route (GET):** /submerchant_list
- */
-export async function listSubmerchantsInDB(): Promise<Submerchant[]> {
-  if (!mongo.db) throw new Error("MongoDB not initialised");
-  return await mongo.db.collection('submerchants').find({}).toArray() as Submerchant[];
-}
-
-/* ============================================================
-   Ticket (Customer Service) Operations
-   ============================================================
-   CRUD operations for the "tickets" collection.
-*/
-
-/**
- * Inserts a new Ticket document.
- *
- * **Route (POST):** /ticket_create
+ * **Route (POST):** /db_ticket_create
  */
 export async function createTicketInDB(
   props: Partial<Ticket>
@@ -561,7 +371,7 @@ export async function createTicketInDB(
 /**
  * Retrieves a Ticket by its ticketId.
  *
- * **Route (GET):** /ticket_get?ticketId=...
+ * **Route (GET):** /db_ticket_get?ticketId=...
  */
 export async function getTicketFromDB(ticketId: string): Promise<Ticket | null> {
   if (!mongo.db) throw new Error("MongoDB not initialised");
@@ -569,9 +379,9 @@ export async function getTicketFromDB(ticketId: string): Promise<Ticket | null> 
 }
 
 /**
- * Updates a Ticket by its ticketId.
+ * Updates a Ticket document.
  *
- * **Route (POST):** /ticket_update?ticketId=...
+ * **Route (POST):** /db_ticket_update?ticketId=...
  */
 export async function updateTicketInDB(
   ticketId: string,
@@ -584,9 +394,9 @@ export async function updateTicketInDB(
 }
 
 /**
- * Deletes a Ticket by its ticketId.
+ * Deletes a Ticket document.
  *
- * **Route (POST):** /ticket_delete?ticketId=...
+ * **Route (POST):** /db_ticket_delete?ticketId=...
  */
 export async function deleteTicketInDB(ticketId: string): Promise<boolean> {
   if (!mongo.db) throw new Error("MongoDB not initialised");
@@ -597,21 +407,21 @@ export async function deleteTicketInDB(ticketId: string): Promise<boolean> {
 /**
  * Lists all Tickets.
  *
- * **Route (GET):** /ticket_list
+ * **Route (GET):** /db_ticket_list
  */
 export async function listTicketsInDB(): Promise<Ticket[]> {
   if (!mongo.db) throw new Error("MongoDB not initialised");
-  return await mongo.db.collection('tickets').find({}).toArray() as Ticket[];
+  return await mongo.db.collection('tickets').find({}).toArray() as any as Ticket[];
 }
 
 /* ============================================================
    HTTP Routes for MongoDB Operations
    ============================================================
-   All routes now use only GET and POST endpoints with explicit naming.
+   All endpoints use only GET and POST routes with an explicit "/db_" prefix.
 */
 export const mongodbRoutes: Routes = {
   // --------- ProductListing Routes ---------
-  "/productListing_get": {
+  "/db_productListing_get": {
     GET: async (request, response, cfg) => {
       try {
         const url = new URL(request.url!, `http://${request.headers.host}`);
@@ -635,7 +445,7 @@ export const mongodbRoutes: Routes = {
       }
     }
   },
-  "/productListing_create": {
+  "/db_productListing_create": {
     POST: async (request, response, cfg) => {
       try {
         const body = await getRequestBody(request);
@@ -649,7 +459,7 @@ export const mongodbRoutes: Routes = {
       }
     }
   },
-  "/productListing_update": {
+  "/db_productListing_update": {
     POST: async (request, response, cfg) => {
       try {
         const url = new URL(request.url!, `http://${request.headers.host}`);
@@ -675,7 +485,7 @@ export const mongodbRoutes: Routes = {
       }
     }
   },
-  "/productListing_delete": {
+  "/db_productListing_delete": {
     POST: async (request, response, cfg) => {
       try {
         const url = new URL(request.url!, `http://${request.headers.host}`);
@@ -701,7 +511,7 @@ export const mongodbRoutes: Routes = {
   },
 
   // --------- SellerProfile Routes ---------
-  "/sellerProfile_get": {
+  "/db_sellerProfile_get": {
     GET: async (request, response, cfg) => {
       try {
         const url = new URL(request.url!, `http://${request.headers.host}`);
@@ -725,7 +535,7 @@ export const mongodbRoutes: Routes = {
       }
     }
   },
-  "/sellerProfile_create": {
+  "/db_sellerProfile_create": {
     POST: async (request, response, cfg) => {
       try {
         const body = await getRequestBody(request);
@@ -739,7 +549,7 @@ export const mongodbRoutes: Routes = {
       }
     }
   },
-  "/sellerProfile_update": {
+  "/db_sellerProfile_update": {
     POST: async (request, response, cfg) => {
       try {
         const url = new URL(request.url!, `http://${request.headers.host}`);
@@ -765,7 +575,7 @@ export const mongodbRoutes: Routes = {
       }
     }
   },
-  "/sellerProfile_delete": {
+  "/db_sellerProfile_delete": {
     POST: async (request, response, cfg) => {
       try {
         const url = new URL(request.url!, `http://${request.headers.host}`);
@@ -791,7 +601,7 @@ export const mongodbRoutes: Routes = {
   },
 
   // --------- UserProfile Routes ---------
-  "/userProfile_get": {
+  "/db_userProfile_get": {
     GET: async (request, response, cfg) => {
       try {
         const url = new URL(request.url!, `http://${request.headers.host}`);
@@ -815,7 +625,7 @@ export const mongodbRoutes: Routes = {
       }
     }
   },
-  "/userProfile_create": {
+  "/db_userProfile_create": {
     POST: async (request, response, cfg) => {
       try {
         const body = await getRequestBody(request);
@@ -829,7 +639,7 @@ export const mongodbRoutes: Routes = {
       }
     }
   },
-  "/userProfile_update": {
+  "/db_userProfile_update": {
     POST: async (request, response, cfg) => {
       try {
         const url = new URL(request.url!, `http://${request.headers.host}`);
@@ -855,7 +665,7 @@ export const mongodbRoutes: Routes = {
       }
     }
   },
-  "/userProfile_delete": {
+  "/db_userProfile_delete": {
     POST: async (request, response, cfg) => {
       try {
         const url = new URL(request.url!, `http://${request.headers.host}`);
@@ -880,110 +690,9 @@ export const mongodbRoutes: Routes = {
     }
   },
 
-  // --------- Inventory Routes ---------
-  "/inventory_get": {
-    GET: async (request, response, cfg) => {
-      try {
-        const url = new URL(request.url!, `http://${request.headers.host}`);
-        const sku = url.searchParams.get("sku");
-        if (!sku) {
-          setHeaders(response, 400);
-          response.end(JSON.stringify({ error: "Missing sku query parameter" }));
-          return;
-        }
-        const item = await getInventoryItemFromDB(sku);
-        if (!item) {
-          setHeaders(response, 404);
-          response.end(JSON.stringify({ error: "Inventory item not found" }));
-          return;
-        }
-        setHeaders(response, 200);
-        response.end(JSON.stringify(item));
-      } catch (err: any) {
-        setHeaders(response, 500);
-        response.end(JSON.stringify({ error: err.message }));
-      }
-    }
-  },
-  "/inventory_create": {
-    POST: async (request, response, cfg) => {
-      try {
-        const body = await getRequestBody(request);
-        const data = JSON.parse(body);
-        const newItem = await createInventoryItemInDB(data);
-        setHeaders(response, 201);
-        response.end(JSON.stringify(newItem));
-      } catch (err: any) {
-        setHeaders(response, 500);
-        response.end(JSON.stringify({ error: err.message }));
-      }
-    }
-  },
-  "/inventory_update": {
-    POST: async (request, response, cfg) => {
-      try {
-        const url = new URL(request.url!, `http://${request.headers.host}`);
-        const sku = url.searchParams.get("sku");
-        if (!sku) {
-          setHeaders(response, 400);
-          response.end(JSON.stringify({ error: "Missing sku query parameter" }));
-          return;
-        }
-        const body = await getRequestBody(request);
-        const updates = JSON.parse(body);
-        const updatedItem = await updateInventoryItemInDB(sku, updates);
-        if (!updatedItem) {
-          setHeaders(response, 404);
-          response.end(JSON.stringify({ error: "Inventory item not found" }));
-          return;
-        }
-        setHeaders(response, 200);
-        response.end(JSON.stringify(updatedItem));
-      } catch (err: any) {
-        setHeaders(response, 500);
-        response.end(JSON.stringify({ error: err.message }));
-      }
-    }
-  },
-  "/inventory_delete": {
-    POST: async (request, response, cfg) => {
-      try {
-        const url = new URL(request.url!, `http://${request.headers.host}`);
-        const sku = url.searchParams.get("sku");
-        if (!sku) {
-          setHeaders(response, 400);
-          response.end(JSON.stringify({ error: "Missing sku query parameter" }));
-          return;
-        }
-        const success = await deleteInventoryItemInDB(sku);
-        if (!success) {
-          setHeaders(response, 404);
-          response.end(JSON.stringify({ error: "Inventory item not found or could not be deleted" }));
-          return;
-        }
-        setHeaders(response, 200);
-        response.end(JSON.stringify({ success: true }));
-      } catch (err: any) {
-        setHeaders(response, 500);
-        response.end(JSON.stringify({ error: err.message }));
-      }
-    }
-  },
-  "/inventory_list": {
-    GET: async (request, response, cfg) => {
-      try {
-        const items = await listInventoryItemsInDB();
-        setHeaders(response, 200);
-        response.end(JSON.stringify({ items }));
-      } catch (err: any) {
-        setHeaders(response, 500);
-        response.end(JSON.stringify({ error: err.message }));
-      }
-    }
-  },
-
   // --------- Order Routes ---------
-  "/order_get": {
+  // NOTE: This collection is optional; Braintree stores detailed transaction/order info.
+  "/db_order_get": {
     GET: async (request, response, cfg) => {
       try {
         const url = new URL(request.url!, `http://${request.headers.host}`);
@@ -1007,7 +716,7 @@ export const mongodbRoutes: Routes = {
       }
     }
   },
-  "/order_create": {
+  "/db_order_create": {
     POST: async (request, response, cfg) => {
       try {
         const body = await getRequestBody(request);
@@ -1021,7 +730,7 @@ export const mongodbRoutes: Routes = {
       }
     }
   },
-  "/order_update": {
+  "/db_order_update": {
     POST: async (request, response, cfg) => {
       try {
         const url = new URL(request.url!, `http://${request.headers.host}`);
@@ -1047,7 +756,7 @@ export const mongodbRoutes: Routes = {
       }
     }
   },
-  "/order_delete": {
+  "/db_order_delete": {
     POST: async (request, response, cfg) => {
       try {
         const url = new URL(request.url!, `http://${request.headers.host}`);
@@ -1071,7 +780,7 @@ export const mongodbRoutes: Routes = {
       }
     }
   },
-  "/order_list": {
+  "/db_order_list": {
     GET: async (request, response, cfg) => {
       try {
         const orders = await listOrdersInDB();
@@ -1084,110 +793,8 @@ export const mongodbRoutes: Routes = {
     }
   },
 
-  // --------- Submerchant Routes ---------
-  "/submerchant_get": {
-    GET: async (request, response, cfg) => {
-      try {
-        const url = new URL(request.url!, `http://${request.headers.host}`);
-        const id = url.searchParams.get("id");
-        if (!id) {
-          setHeaders(response, 400);
-          response.end(JSON.stringify({ error: "Missing id query parameter" }));
-          return;
-        }
-        const submerchant = await getSubmerchantFromDB(id);
-        if (!submerchant) {
-          setHeaders(response, 404);
-          response.end(JSON.stringify({ error: "Submerchant not found" }));
-          return;
-        }
-        setHeaders(response, 200);
-        response.end(JSON.stringify(submerchant));
-      } catch (err: any) {
-        setHeaders(response, 500);
-        response.end(JSON.stringify({ error: err.message }));
-      }
-    }
-  },
-  "/submerchant_create": {
-    POST: async (request, response, cfg) => {
-      try {
-        const body = await getRequestBody(request);
-        const data = JSON.parse(body);
-        const newSubmerchant = await createSubmerchantInDB(data);
-        setHeaders(response, 201);
-        response.end(JSON.stringify(newSubmerchant));
-      } catch (err: any) {
-        setHeaders(response, 500);
-        response.end(JSON.stringify({ error: err.message }));
-      }
-    }
-  },
-  "/submerchant_update": {
-    POST: async (request, response, cfg) => {
-      try {
-        const url = new URL(request.url!, `http://${request.headers.host}`);
-        const id = url.searchParams.get("id");
-        if (!id) {
-          setHeaders(response, 400);
-          response.end(JSON.stringify({ error: "Missing id query parameter" }));
-          return;
-        }
-        const body = await getRequestBody(request);
-        const updates = JSON.parse(body);
-        const updatedSubmerchant = await updateSubmerchantInDB(id, updates);
-        if (!updatedSubmerchant) {
-          setHeaders(response, 404);
-          response.end(JSON.stringify({ error: "Submerchant not found" }));
-          return;
-        }
-        setHeaders(response, 200);
-        response.end(JSON.stringify(updatedSubmerchant));
-      } catch (err: any) {
-        setHeaders(response, 500);
-        response.end(JSON.stringify({ error: err.message }));
-      }
-    }
-  },
-  "/submerchant_delete": {
-    POST: async (request, response, cfg) => {
-      try {
-        const url = new URL(request.url!, `http://${request.headers.host}`);
-        const id = url.searchParams.get("id");
-        if (!id) {
-          setHeaders(response, 400);
-          response.end(JSON.stringify({ error: "Missing id query parameter" }));
-          return;
-        }
-        const success = await deleteSubmerchantInDB(id);
-        if (!success) {
-          setHeaders(response, 404);
-          response.end(JSON.stringify({ error: "Submerchant not found or could not be deleted" }));
-          return;
-        }
-        setHeaders(response, 200);
-        response.end(JSON.stringify({ success: true }));
-      } catch (err: any) {
-        setHeaders(response, 500);
-        response.end(JSON.stringify({ error: err.message }));
-      }
-    }
-  },
-  "/submerchant_list": {
-    GET: async (request, response, cfg) => {
-      try {
-        const submerchants = await listSubmerchantsInDB();
-        setHeaders(response, 200);
-        response.end(JSON.stringify({ submerchants }));
-      } catch (err: any) {
-        setHeaders(response, 500);
-        response.end(JSON.stringify({ error: err.message }));
-      }
-    }
-  },
-
   // --------- Ticket Routes ---------
-  "/ticket_get": {
+  "/db_ticket_get": {
     GET: async (request, response, cfg) => {
       try {
         const url = new URL(request.url!, `http://${request.headers.host}`);
@@ -1211,7 +818,7 @@ export const mongodbRoutes: Routes = {
       }
     }
   },
-  "/ticket_create": {
+  "/db_ticket_create": {
     POST: async (request, response, cfg) => {
       try {
         const body = await getRequestBody(request);
@@ -1225,7 +832,7 @@ export const mongodbRoutes: Routes = {
       }
     }
   },
-  "/ticket_update": {
+  "/db_ticket_update": {
     POST: async (request, response, cfg) => {
       try {
         const url = new URL(request.url!, `http://${request.headers.host}`);
@@ -1251,7 +858,7 @@ export const mongodbRoutes: Routes = {
       }
     }
   },
-  "/ticket_delete": {
+  "/db_ticket_delete": {
     POST: async (request, response, cfg) => {
       try {
         const url = new URL(request.url!, `http://${request.headers.host}`);
@@ -1275,7 +882,7 @@ export const mongodbRoutes: Routes = {
       }
     }
   },
-  "/ticket_list": {
+  "/db_ticket_list": {
     GET: async (request, response, cfg) => {
       try {
         const tickets = await listTicketsInDB();

@@ -457,6 +457,60 @@
       braintree_customer_id?: string; // For linking saved payment methods
     };
   };
+
+
+  
+// Order represents a customer order.
+export type Order = {
+  orderId: string;
+  customerId: string;
+  items: Array<{ productId: string; quantity: number; price: number }>;
+  total: number;
+  status: "pending" | "completed" | "cancelled";
+  createdAt: Date;
+  updatedAt: Date;
+  /**
+   * Custom fulfillment details.
+   */
+  fulfillment?: {
+    deliveryMethod: "pickup" | "delivery" | "shipping" | string;
+    fulfillmentStatus: "not_shipped" | "shipped" | "in_transit" | "delivered" | "cancelled" | string;
+    trackingNumber?: string;
+    carrier?: string;
+    estimatedDeliveryDate?: Date;
+    customInstructions?: string;
+  };
+  /**
+   * Chat logs between customer and seller for this order.
+   */
+  chatLogs?: Array<{
+    sender: "customer" | "seller";
+    message: string;
+    timestamp: Date;
+  }>;
+}
+
+
+// Ticket represents a customer service support ticket.
+export type Ticket = {
+  ticketId: string;
+  userId: string;
+  subject: string;
+  message: string;
+  status: "open" | "pending" | "closed";
+  createdAt: Date;
+  updatedAt: Date;
+  /**
+   * Detailed activity logs for this ticket.
+   */
+  logs?: Array<{
+    action: "created" | "updated" | "commented" | "assigned" | "resolved" | string;
+    userId: string; // Identifier of the user (agent, customer, etc.) performing the action
+    message: string; // A detailed description of the action
+    timestamp: Date;
+    additionalInfo?: Record<string, any>; // Optional extra details about the action
+  }>;
+};
   
   /* ================================
      Helper Functions
