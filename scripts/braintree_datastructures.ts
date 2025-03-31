@@ -42,22 +42,22 @@ type MerchantAccountResponse = {
     };
     masterMerchantAccount: object;
     status: "Pending" | "Active" | "Suspended";
-  };
+};
 
   
-  enum SubMerchantAccountWebhookKind {
+enum SubMerchantAccountWebhookKind {
     SubMerchantAccountApproved = "sub_merchant_account_approved",
     SubMerchantAccountDeclined = "sub_merchant_account_declined",
-  }
+}
   
   type SubMerchantAccountWebhookNotification = {
     kind: SubMerchantAccountWebhookKind;
     timestamp: Date;
     merchantAccount: MerchantAccountResponse;
     // Additional attributes may be present for "sub_merchant_account_declined"
-  };
+};
 
-  type CustomerResponse = {
+type CustomerResponse = {
     addresses: Array<{
       id: string;
       streetAddress?: string;
@@ -92,7 +92,7 @@ type MerchantAccountResponse = {
     website?: string;
     createdAt?: Date;
     updatedAt?: Date;
-  };
+};
 
 
   /**
@@ -113,7 +113,7 @@ gateway.customer.create({
 });
    */
 
-  type CustomerCreateRequest = {
+type CustomerCreateRequest = {
     company?: string;
     creditCard?: {
       billingAddress?: {
@@ -165,7 +165,7 @@ gateway.customer.create({
     website?: string;
     customFields?: Record<string, any>;
     deviceData?: string;
-  };
+};
   
 /*
 gateway.customer.find("theCustomerId", function(err, customer) {
@@ -198,7 +198,7 @@ gateway.customer.update("theCustomerId", {
 */
 
 
-  type TransactionResponse = {
+type TransactionResponse = {
     achReturnCode?: string;
     acquirerReferenceNumber?: string;
     addOns?: any[];
@@ -350,7 +350,7 @@ gateway.customer.update("theCustomerId", {
     type?: string;
     updatedAt?: Date;
     // You can extend with more payment-specific methods like `creditCard`, `paypalAccount`, etc.
-  };
+};
 
   
 type TransactionLineItem = {
@@ -369,12 +369,10 @@ type TransactionLineItem = {
     upcCode?: string;
     upcType?: "UPC-A" | "UPC-B" | "UPC-C" | "UPC-D" | "UPC-E" | "UPC-2" | "UPC-5";
     url?: string;
-  };
+};
 
   
-  
-  
-  type SubscriptionResponse = {
+type SubscriptionResponse = {
     addOns: any[];
     balance: string;
     billingDayOfMonth: number;
@@ -414,18 +412,17 @@ type TransactionLineItem = {
     trialDurationUnit?: "day" | "month";
     trialPeriod: boolean;
     updatedAt: Date;
-  };
+};
   
-  type SubscriptionHistory = {
+type SubscriptionHistory = {
     balance: string;
     price: string;
     status: "Active" | "Canceled" | "Expired" | "PastDue" | "Pending";
     subscriptionSource: "api" | "control_panel" | "recurring";
-  };
+};
 
   
-
-  type DiscountResponse = {
+type DiscountResponse = {
     amount: string;
     createdAt: Date;
     currentBillingCycle?: number | null;
@@ -437,10 +434,10 @@ type TransactionLineItem = {
     numberOfBillingCycles: number;
     quantity?: number | null;
     updatedAt: Date;
-  };
+};
   
 
-  type DisputeResponse = {
+type DisputeResponse = {
     amountDisputed: string;
     amountWon: string;
     caseNumber: string;
@@ -500,7 +497,7 @@ type TransactionLineItem = {
     };
   };
   
-  type AddressResponse = {
+type AddressResponse = {
     company?: string;
     countryCodeAlpha2?: string;
     countryCodeAlpha3?: string;
@@ -521,10 +518,10 @@ type TransactionLineItem = {
     region?: string;
     streetAddress?: string;
     updatedAt: Date;
-  };
+};
   
 
-  type ClientTokenRequest = {
+type ClientTokenRequest = {
     customerId?: string;
     merchantAccountId?: string;
     options?: {
@@ -534,9 +531,9 @@ type TransactionLineItem = {
       verifyCard?: boolean;
     };
     version?: "1" | "2" | "3";
-  };
+};
   
-  type CreditCardCreateRequest = {
+type CreditCardCreateRequest = {
     billingAddress?: {
       company?: string;
       countryCodeAlpha2?: string;
@@ -582,9 +579,9 @@ type TransactionLineItem = {
       xid?: string;
     };
     token?: string;
-  };
+};
   
-  type CreditCardVerificationRequest = {
+type CreditCardVerificationRequest = {
     creditCard: {
       billingAddress?: {
         company?: string;
@@ -634,7 +631,7 @@ type TransactionLineItem = {
     };
   };
   
-  type CreditCardResponse = {
+type CreditCardResponse = {
     billingAddress?: {
       streetAddress?: string;
       locality?: string;
@@ -680,9 +677,9 @@ type TransactionLineItem = {
     uniqueNumberIdentifier: string;
     updatedAt: Date;
     verification?: object;
-  };
+};
 
-  type VisaCheckoutCardResponse = {
+type VisaCheckoutCardResponse = {
     billingAddress?: {
       streetAddress?: string;
       locality?: string;
@@ -718,9 +715,9 @@ type TransactionLineItem = {
     token: string;
     uniqueNumberIdentifier: string;
     updatedAt: Date;
-  };
+};
 
-  type VenmoAccountResponse = {
+type VenmoAccountResponse = {
     createdAt: Date;
     customerId: string;
     default: boolean;
@@ -731,9 +728,9 @@ type TransactionLineItem = {
     updatedAt: Date;
     username: string;
     venmoUserId: string;
-  };
+};
 
-  type UsBankAccountResponse = {
+type UsBankAccountResponse = {
     accountHolderName: string;
     accountType: "business_checking" | "business_savings" | "checking" | "savings";
     achMandate?: string;
@@ -753,10 +750,10 @@ type TransactionLineItem = {
     updatedAt: Date;
     verifiable: boolean;
     verified: boolean;
-  };
+};
 
 
-  type UsBankAccountVerificationResponse = {
+type UsBankAccountVerificationResponse = {
     additionalProcessorResponse?: string;
     createdAt: Date;
     gatewayRejectionReason?: "too_many_confirmation_attempts";
@@ -778,9 +775,9 @@ type TransactionLineItem = {
     };
     verificationDeterminedAt: Date;
     verificationMethod: "independent_check" | "micro_transfers" | "network_check" | "tokenized_check";
-  };
+};
 
-  type SepaDebitAccountResponse = {
+type SepaDebitAccountResponse = {
     bankReferenceToken: string;
     createdAt: Date;
     customerId: string;
@@ -794,7 +791,7 @@ type TransactionLineItem = {
     token: string;
     updatedAt: Date;
     viewMandateUrl: string;
-  };
+};
   
 
 export { 

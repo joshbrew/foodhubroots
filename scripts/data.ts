@@ -12,7 +12,7 @@
 /* ================================
    Product Listing Data Structure
    ================================ */
-   export type ProductListing = {
+export type ProductListing = {
     listingId: string; // Unique identifier for the listing
     sellerId: string; // Unique identifier for the seller
     status: "active" | "inactive" | "pending" | "draft"; // Listing status
@@ -184,12 +184,12 @@
        */
       platform_fee_percentage?: number;
     };
-  };
+};
   
-  /* ================================
-     Seller Profile Data Structure
-     ================================ */
-  export type SellerProfile = {
+/* ================================
+    Seller Profile Data Structure
+    ================================ */
+export type SellerProfile = {
   sellerId: string; // Unique identifier for the seller
   name: string; // Seller or business name
   bio?: string; // Brief biography or description
@@ -325,7 +325,6 @@
   };
 };
 
-
 /* ================================
   User Profile Data Structure
   ================================ */
@@ -428,10 +427,7 @@ export type UserProfile = {
     braintree_customer_id?: string;
   };
 };
-    
 
-
-  
 // Order represents a customer order.
 export type Order = {
   orderId: string;
@@ -439,7 +435,7 @@ export type Order = {
   customerId: string;
   items: Array<{ productId: string; quantity: number; price: number }>;
   total: number;
-  status: "pending" | "completed" | "cancelled";
+  status: "pending" | "approval_pending" | "processing" | "shipped" | "delivered" | "cancelled";
   createdAt: Date;
   updatedAt: Date;
   /**
@@ -463,7 +459,6 @@ export type Order = {
   }>;
 }
 
-
 // Ticket represents a customer service support ticket.
 export type Ticket = {
   ticketId: string;
@@ -485,76 +480,76 @@ export type Ticket = {
   }>;
 };
   
-  /* ================================
-     Helper Functions
-     ================================ */
-  
-  /**
-   * Creates a new ProductListing object with default values merged with provided properties.
-   *
-   * @param props Partial product listing properties to override defaults.
-   * @returns A fully initialized ProductListing object.
-   */
-  export function createProductListing(props: Partial<ProductListing> = {}): ProductListing {
-    const defaultProductListing: ProductListing = {
-      listingId: "",
-      sellerId: "",
-      status: "draft",
-      visibility: "public",
-      product_info: {
-        name: "",
-        description: "",
-        category: "",
-        tags: [],
-        attributes: {},
-        pricing: {
-          currency: "USD",
-          price_tiers: {},
-        },
-        inventory: {
-          minimum_quantity: 0,
-          available_quantity: 0,
-        },
+/* ================================
+    Helper Functions
+    ================================ */
+
+/**
+ * Creates a new ProductListing object with default values merged with provided properties.
+ *
+ * @param props Partial product listing properties to override defaults.
+ * @returns A fully initialized ProductListing object.
+ */
+export function createProductListing(props: Partial<ProductListing> = {}): ProductListing {
+  const defaultProductListing: ProductListing = {
+    listingId: "",
+    sellerId: "",
+    status: "draft",
+    visibility: "public",
+    product_info: {
+      name: "",
+      description: "",
+      category: "",
+      tags: [],
+      attributes: {},
+      pricing: {
+        currency: "USD",
+        price_tiers: {},
       },
-      fulfillment: {},
-      compliance: {},
-      location: {
-        address: [{
-          street: "",
-          country: "",
-          state: "",
-          city: "",
-          zipcode: "",
-        }],
+      inventory: {
+        minimum_quantity: 0,
+        available_quantity: 0,
       },
-      media: {
-        images: {},
-        videos: {},
+    },
+    fulfillment: {},
+    compliance: {},
+    location: {
+      address: [{
+        street: "",
+        country: "",
+        state: "",
+        city: "",
+        zipcode: "",
+      }],
+    },
+    media: {
+      images: {},
+      videos: {},
+    },
+    ratings: {
+      average_rating: 0,
+      total_reviews: 0,
+      reviews: {},
+    },
+    metrics: {
+      views: {
+        product_views: 0,
+        listing_views: 0,
       },
-      ratings: {
-        average_rating: 0,
-        total_reviews: 0,
-        reviews: {},
+      sales: {
+        total_units: 0,
+        total_orders: 0,
       },
-      metrics: {
-        views: {
-          product_views: 0,
-          listing_views: 0,
-        },
-        sales: {
-          total_units: 0,
-          total_orders: 0,
-        },
-      },
-      metadata: {
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-        created_by: "",
-        last_updated_by: "",
-      },
-    };
-    return recursivelyAssign(defaultProductListing, props);
-  }
+    },
+    metadata: {
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      created_by: "",
+      last_updated_by: "",
+    },
+  };
+  return recursivelyAssign(defaultProductListing, props);
+}
   
   /**
    * Creates a new SellerProfile object with default values merged with provided properties.
