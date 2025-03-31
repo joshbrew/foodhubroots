@@ -575,8 +575,6 @@ export const braintreeRoutes: Routes = {
     }
   },
 
-  /* --------------------- Additional Professional Endpoints --------------------- */
-
   "/refund": {
     POST: async (request, response, cfg) => {
       try {
