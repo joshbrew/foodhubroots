@@ -10,7 +10,51 @@ import {
   CreditCardCreateRequest, CreditCardVerificationRequest, SubMerchantAccountWebhookNotification
 } from '../scripts/braintree_datastructures';
 
-// Set up the Braintree Gateway.
+/**
+ * # Braintree Payment System Integration Module
+ *
+ * This module integrates with Braintree to perform a variety of payment operations,
+ * including generating client tokens, processing transactions, creating and updating
+ * customers, handling split transactions, and managing subscriptions. It also defines
+ * HTTP route handlers that map to these operations (using GET, POST, PUT, DELETE as needed).
+ *
+ * ## Overview of Operations and HTTP Methods:
+ *
+ * - **GET Operations:**
+ *   - `/client-token` (GET): Returns a newly generated client token.
+ *   - `/transactions` (GET): Retrieves all transactions (filtered by creation date).
+ *   - `/customers` (GET): Retrieves all customers.
+ *
+ * - **POST Operations:**
+ *   - `/transaction` (POST): Retrieves a specific transaction (by passing transactionId).
+ *   - `/checkout` (POST): Processes a sale transaction (checkout) for a customer.
+ *   - `/create-customer` (POST): Creates a new customer using the provided data.
+ *   - `/get-customer` (POST): Retrieves a customer by customerId.
+ *   - `/update-customer` (POST): Updates customer details.
+ *   - `/create-submerchant` (POST): Creates a submerchant account.
+ *   - `/split-transaction` (POST): Processes a split transaction.
+ *   - `/get-submerchant` (POST): Retrieves a submerchant account by merchantAccountId.
+ *   - `/webhook` (POST): Processes webhook notifications from Braintree.
+ *   - `/refund` (POST): Refunds a transaction.
+ *   - `/void-transaction` (POST): Voids a transaction.
+ *   - `/delete-customer` (POST): Deletes a customer.
+ *   - `/create-payment-method` (POST): Creates a new payment method.
+ *   - `/update-payment-method` (POST): Updates a payment method.
+ *   - `/delete-payment-method` (POST): Deletes a payment method.
+ *   - `/create-subscription` (POST): Creates a subscription for a customer.
+ *   - `/cancel-subscription` (POST): Cancels an existing subscription.
+ *   - `/get-subscription` (POST): Retrieves a subscription by its ID.
+ *
+ * - **PUT Operations:**  
+ *   (Note: In this integration, update operations are handled with POST methods for simplicity,
+ *    but conceptually these correspond to HTTP PUT for updating resources.)
+ */
+
+/* ===================================================================
+   Braintree Gateway Setup
+   ===================================================================
+   Initializes the Braintree gateway using environment variables.
+*/
 export const btGateway = new braintree.BraintreeGateway({
   environment: braintree.Environment.Sandbox,
   merchantId: process.env.BRAINTREE_MERCHANT_ID!,
@@ -18,8 +62,17 @@ export const btGateway = new braintree.BraintreeGateway({
   privateKey: process.env.BRAINTREE_PRIVATE_KEY!
 });
 
+/* ===================================================================
+   Payment Operations
+   =================================================================== */
+
 /**
  * Generates and returns a client token.
+ *
+ * @returns A Promise resolving to a client token string.
+ *
+ * **HTTP Mapping:**  
+ * GET `/client-token`
  */
 export async function generateClientToken(): Promise<string> {
   const res = await btGateway.clientToken.generate({});
@@ -28,6 +81,13 @@ export async function generateClientToken(): Promise<string> {
 
 /**
  * Finds and returns a transaction by its transactionId.
+ *
+ * @param transactionId - The unique identifier for the transaction.
+ * @returns A Promise resolving to a Transaction object that may be either
+ * a braintree.Transaction or a TransactionResponse type.
+ *
+ * **HTTP Mapping:**  
+ * POST `/transaction` (typically used to retrieve a transaction by ID)
  */
 export async function findTransaction(transactionId: string): Promise<braintree.Transaction | TransactionResponse> {
   return await btGateway.transaction.find(transactionId);
@@ -35,6 +95,13 @@ export async function findTransaction(transactionId: string): Promise<braintree.
 
 /**
  * Processes a sale transaction (checkout) for a customer.
+ *
+ * @param customerId - The unique identifier of the customer.
+ * @param amount - The transaction amount as a string.
+ * @returns A Promise resolving to the transaction ID of the processed sale.
+ *
+ * **HTTP Mapping:**  
+ * POST `/checkout`
  */
 export async function processCheckout(customerId: string, amount: string): Promise<string> {
   const saleRequest: braintree.TransactionRequest = {
@@ -51,7 +118,14 @@ export async function processCheckout(customerId: string, amount: string): Promi
 
 /**
  * Creates a new customer with the provided data.
- * Uses the CustomerCreateRequest type from braintree_datastructures.
+ *
+ * Uses the `CustomerCreateRequest` type for the input data.
+ *
+ * @param data - Customer creation details.
+ * @returns A Promise resolving to the new customer's ID.
+ *
+ * **HTTP Mapping:**  
+ * POST `/create-customer`
  */
 export async function createCustomer(data: CustomerCreateRequest): Promise<string> {
   const result = await btGateway.customer.create({
@@ -63,7 +137,7 @@ export async function createCustomer(data: CustomerCreateRequest): Promise<strin
     fax: data.fax,
     phone: data.phone,
     website: data.website,
-    // Optionally include additional fields from CustomerCreateRequest if needed.
+    // Additional fields from CustomerCreateRequest may be included as needed.
   });
   if (!result.success) {
     throw new Error(result.message);
@@ -73,6 +147,13 @@ export async function createCustomer(data: CustomerCreateRequest): Promise<strin
 
 /**
  * Retrieves and returns a customer by its customerId.
+ *
+ * @param customerId - The unique identifier for the customer.
+ * @returns A Promise resolving to a customer object, which may be either a
+ * braintree.Customer or a CustomerResponse.
+ *
+ * **HTTP Mapping:**  
+ * POST `/get-customer`
  */
 export async function getCustomer(customerId: string): Promise<braintree.Customer | CustomerResponse> {
   return await btGateway.customer.find(customerId);
@@ -80,6 +161,12 @@ export async function getCustomer(customerId: string): Promise<braintree.Custome
 
 /**
  * Updates a customer's details.
+ *
+ * @param data - An object containing the customerId and any fields to update.
+ * @returns A Promise that resolves when the update is successful.
+ *
+ * **HTTP Mapping:**  
+ * POST `/update-customer` (conceptually a PUT operation)
  */
 export async function updateCustomer(data: {
   customerId: string;
@@ -113,7 +200,13 @@ export async function updateCustomer(data: {
 
 /**
  * Creates a submerchant account using provided data.
- * Returns the full MerchantAccountResponse.
+ *
+ * @param data - An object containing the `individual` and `funding` details.
+ * @returns A Promise resolving to a MerchantAccount object, which may be either
+ * a braintree.MerchantAccount or a MerchantAccountResponse.
+ *
+ * **HTTP Mapping:**  
+ * POST `/create-submerchant`
  */
 export async function createSubmerchant(data: {
   individual: any;
@@ -133,7 +226,14 @@ export async function createSubmerchant(data: {
 }
 
 /**
- * Processes a split transaction and returns details.
+ * Processes a split transaction and returns earnings details.
+ *
+ * @param params - Contains subMerchantAccountId, amount, and optionally nonce or customerId.
+ * @returns A Promise resolving to an object with the transactionId, subMerchantEarnings,
+ * and masterMerchantEarnings.
+ *
+ * **HTTP Mapping:**  
+ * POST `/split-transaction`
  */
 export async function splitTransaction(params: {
   subMerchantAccountId: string;
@@ -172,6 +272,11 @@ export async function splitTransaction(params: {
 
 /**
  * Retrieves all transactions (filtered by creation date).
+ *
+ * @returns A Promise resolving to an array of TransactionResponse objects.
+ *
+ * **HTTP Mapping:**  
+ * GET `/transactions`
  */
 export async function getTransactions(): Promise<TransactionResponse[]> {
   return new Promise<TransactionResponse[]>((resolve, reject) => {
@@ -194,6 +299,11 @@ export async function getTransactions(): Promise<TransactionResponse[]> {
 
 /**
  * Retrieves all customers.
+ *
+ * @returns A Promise resolving to an array of CustomerResponse objects.
+ *
+ * **HTTP Mapping:**  
+ * GET `/customers`
  */
 export async function getAllCustomers(): Promise<CustomerResponse[]> {
   return new Promise<CustomerResponse[]>((resolve, reject) => {
@@ -216,6 +326,12 @@ export async function getAllCustomers(): Promise<CustomerResponse[]> {
 
 /**
  * Retrieves a submerchant account by its merchantAccountId.
+ *
+ * @param merchantAccountId - The unique identifier for the submerchant account.
+ * @returns A Promise resolving to a MerchantAccount object.
+ *
+ * **HTTP Mapping:**  
+ * POST `/get-submerchant`
  */
 export async function getSubmerchant(merchantAccountId: string): Promise<braintree.MerchantAccount | MerchantAccountResponse> {
   return await btGateway.merchantAccount.find(merchantAccountId);
@@ -223,6 +339,11 @@ export async function getSubmerchant(merchantAccountId: string): Promise<braintr
 
 /**
  * Retrieves submerchant accounts by reading approved submerchant IDs from a file.
+ *
+ * @returns A Promise resolving to an array of MerchantAccount objects.
+ *
+ * **HTTP Mapping:**  
+ * GET `/submerchants`
  */
 export async function getSubmerchantsFromFile(): Promise<(braintree.MerchantAccount | MerchantAccountResponse)[]> {
   if (!fs.existsSync('approved_submerchants.txt')) {
@@ -244,6 +365,13 @@ export async function getSubmerchantsFromFile(): Promise<(braintree.MerchantAcco
 
 /**
  * Processes a webhook notification from Braintree.
+ *
+ * @param btSignature - The Braintree signature provided in the webhook.
+ * @param btPayload - The payload of the webhook notification.
+ * @returns A Promise resolving to a SubMerchantAccountWebhookNotification or an error.
+ *
+ * **HTTP Mapping:**  
+ * POST `/webhook`
  */
 export async function processWebhook(btSignature: string, btPayload: string): Promise<SubMerchantAccountWebhookNotification | any> {
   return new Promise((resolve, reject) => {
@@ -251,16 +379,25 @@ export async function processWebhook(btSignature: string, btPayload: string): Pr
       // @ts-ignore
       (err, webhookNotification) => {
       if (err) return reject(err);
-      // Additional processing (e.g. file logging) can be done here.
+      // Additional processing (e.g., logging to a file) can be done here.
       resolve(webhookNotification);
     });
   });
 }
 
-/* ------------------------ Additional Professional Handles ------------------------ */
+/* ===================================================================
+   Additional Professional Operations
+   =================================================================== */
 
 /**
  * Refunds a transaction.
+ *
+ * @param transactionId - The transaction ID to refund.
+ * @param amount - (Optional) The amount to refund.
+ * @returns A Promise resolving to the refund transaction ID.
+ *
+ * **HTTP Mapping:**  
+ * POST `/refund`
  */
 export async function refundTransaction(transactionId: string, amount?: string): Promise<string> {
   const result = await btGateway.transaction.refund(transactionId, amount);
@@ -272,6 +409,12 @@ export async function refundTransaction(transactionId: string, amount?: string):
 
 /**
  * Voids a transaction.
+ *
+ * @param transactionId - The transaction ID to void.
+ * @returns A Promise resolving to the voided transaction ID.
+ *
+ * **HTTP Mapping:**  
+ * POST `/void-transaction`
  */
 export async function voidTransaction(transactionId: string): Promise<string> {
   const result = await btGateway.transaction.void(transactionId);
@@ -283,6 +426,12 @@ export async function voidTransaction(transactionId: string): Promise<string> {
 
 /**
  * Deletes a customer.
+ *
+ * @param customerId - The unique identifier for the customer.
+ * @returns A Promise that resolves when the customer is deleted.
+ *
+ * **HTTP Mapping:**  
+ * POST `/delete-customer`
  */
 export async function deleteCustomer(customerId: string): Promise<void> {
   await btGateway.customer.delete(customerId);
@@ -290,6 +439,12 @@ export async function deleteCustomer(customerId: string): Promise<void> {
 
 /**
  * Creates a new payment method for a customer.
+ *
+ * @param data - An object containing customerId, paymentMethodNonce, and an optional makeDefault flag.
+ * @returns A Promise resolving to the token for the new payment method.
+ *
+ * **HTTP Mapping:**  
+ * POST `/create-payment-method`
  */
 export async function createPaymentMethod(data: { customerId: string; paymentMethodNonce: string; makeDefault?: boolean }): Promise<string> {
   const result = await btGateway.paymentMethod.create({
@@ -307,6 +462,13 @@ export async function createPaymentMethod(data: { customerId: string; paymentMet
 
 /**
  * Updates a payment method.
+ *
+ * @param token - The token identifying the payment method.
+ * @param data - An object containing fields to update (e.g., cardholderName, expirationDate).
+ * @returns A Promise that resolves when the update is complete.
+ *
+ * **HTTP Mapping:**  
+ * POST `/update-payment-method`
  */
 export async function updatePaymentMethod(token: string, data: { cardholderName?: string; expirationDate?: string }): Promise<void> {
   const result = await btGateway.paymentMethod.update(token, data);
@@ -317,6 +479,12 @@ export async function updatePaymentMethod(token: string, data: { cardholderName?
 
 /**
  * Deletes a payment method.
+ *
+ * @param token - The token identifying the payment method.
+ * @returns A Promise that resolves when the payment method is deleted.
+ *
+ * **HTTP Mapping:**  
+ * POST `/delete-payment-method`
  */
 export async function deletePaymentMethod(token: string): Promise<void> {
   const result = await btGateway.paymentMethod.delete(token);
@@ -325,6 +493,12 @@ export async function deletePaymentMethod(token: string): Promise<void> {
 
 /**
  * Creates a subscription for a customer.
+ *
+ * @param data - An object containing paymentMethodToken, planId, and an optional price.
+ * @returns A Promise resolving to the new subscription's ID.
+ *
+ * **HTTP Mapping:**  
+ * POST `/create-subscription`
  */
 export async function createSubscription(data: { paymentMethodToken: string; planId: string; price?: string }): Promise<string> {
   const request: braintree.SubscriptionRequest = {
@@ -343,6 +517,12 @@ export async function createSubscription(data: { paymentMethodToken: string; pla
 
 /**
  * Cancels a subscription.
+ *
+ * @param subscriptionId - The subscription ID to cancel.
+ * @returns A Promise that resolves when the subscription is cancelled.
+ *
+ * **HTTP Mapping:**  
+ * POST `/cancel-subscription`
  */
 export async function cancelSubscription(subscriptionId: string): Promise<void> {
   const result = await btGateway.subscription.cancel(subscriptionId);
@@ -351,14 +531,29 @@ export async function cancelSubscription(subscriptionId: string): Promise<void> 
 
 /**
  * Retrieves a subscription.
+ *
+ * @param subscriptionId - The unique identifier for the subscription.
+ * @returns A Promise resolving to the subscription object, which may be either a
+ * braintree.Subscription or a SubscriptionResponse.
+ *
+ * **HTTP Mapping:**  
+ * POST `/get-subscription`
  */
 export async function getSubscription(subscriptionId: string): Promise<braintree.Subscription | SubscriptionResponse> {
   return await btGateway.subscription.find(subscriptionId);
 }
 
-/* ------------------------ Enhanced Routes ------------------------ */
-
+/* ===================================================================
+   HTTP Route Handlers
+   ===================================================================
+   The following routes expose the above operations via HTTP endpoints.
+   Each endpoint maps to a specific CRUD operation using GET, POST, PUT, or DELETE.
+*/
 export const braintreeRoutes: Routes = {
+  /**
+   * GET /client-token  
+   * Returns a generated client token for Braintree operations.
+   */
   "/client-token": {
     GET: async (request, response, cfg) => {
       try {
@@ -372,6 +567,10 @@ export const braintreeRoutes: Routes = {
     }
   },
 
+  /**
+   * POST /transaction  
+   * Retrieves a transaction by its transactionId.
+   */
   "/transaction": {
     POST: async (request, response, cfg) => {
       try {
@@ -387,6 +586,10 @@ export const braintreeRoutes: Routes = {
     }
   },
 
+  /**
+   * POST /checkout  
+   * Processes a sale transaction (checkout) for a customer.
+   */
   "/checkout": {
     POST: async (request, response, cfg) => {
       try {
@@ -402,6 +605,10 @@ export const braintreeRoutes: Routes = {
     }
   },
 
+  /**
+   * POST /create-customer  
+   * Creates a new customer using provided data.
+   */
   "/create-customer": {
     POST: async (request, response, cfg) => {
       try {
@@ -417,6 +624,10 @@ export const braintreeRoutes: Routes = {
     }
   },
 
+  /**
+   * POST /get-customer  
+   * Retrieves a customer by customerId.
+   */
   "/get-customer": {
     POST: async (request, response, cfg) => {
       try {
@@ -432,6 +643,10 @@ export const braintreeRoutes: Routes = {
     }
   },
 
+  /**
+   * POST /update-customer  
+   * Updates customer details.
+   */
   "/update-customer": {
     POST: async (request, response, cfg) => {
       try {
@@ -447,6 +662,10 @@ export const braintreeRoutes: Routes = {
     }
   },
 
+  /**
+   * POST /create-submerchant  
+   * Creates a new submerchant account.
+   */
   "/create-submerchant": {
     POST: async (request, response, cfg) => {
       try {
@@ -462,6 +681,10 @@ export const braintreeRoutes: Routes = {
     }
   },
 
+  /**
+   * POST /split-transaction  
+   * Processes a split transaction and returns earnings details.
+   */
   "/split-transaction": {
     POST: async (request, response, cfg) => {
       try {
@@ -477,6 +700,10 @@ export const braintreeRoutes: Routes = {
     }
   },
 
+  /**
+   * GET /transactions  
+   * Retrieves all transactions.
+   */
   "/transactions": {
     GET: async (request, response, cfg) => {
       try {
@@ -490,6 +717,10 @@ export const braintreeRoutes: Routes = {
     }
   },
 
+  /**
+   * GET /customers  
+   * Retrieves all customers.
+   */
   "/customers": {
     GET: async (request, response, cfg) => {
       try {
@@ -503,6 +734,10 @@ export const braintreeRoutes: Routes = {
     }
   },
 
+  /**
+   * POST /get-submerchant  
+   * Retrieves a submerchant account by merchantAccountId.
+   */
   "/get-submerchant": {
     POST: async (request, response, cfg) => {
       try {
@@ -518,6 +753,10 @@ export const braintreeRoutes: Routes = {
     }
   },
 
+  /**
+   * GET /submerchants  
+   * Retrieves all approved submerchant accounts from a file.
+   */
   "/submerchants": {
     GET: async (request, response, cfg) => {
       try {
@@ -531,6 +770,10 @@ export const braintreeRoutes: Routes = {
     }
   },
 
+  /**
+   * POST /webhook  
+   * Processes incoming webhook notifications from Braintree.
+   */
   "/webhook": {
     POST: async (request, response, cfg) => {
       try {
@@ -540,7 +783,7 @@ export const braintreeRoutes: Routes = {
         const btPayload = parsedBody.bt_payload as string;
         const webhookNotification = await processWebhook(btSignature, btPayload);
 
-        // Example of additional handling based on webhook kind.
+        // Additional handling based on webhook kind:
         switch (webhookNotification.kind) {
           // @ts-ignore
           case braintree.WebhookNotification.Kind.SubMerchantAccountApproved:
@@ -575,6 +818,10 @@ export const braintreeRoutes: Routes = {
     }
   },
 
+  /**
+   * POST /refund  
+   * Refunds a transaction.
+   */
   "/refund": {
     POST: async (request, response, cfg) => {
       try {
@@ -590,6 +837,10 @@ export const braintreeRoutes: Routes = {
     }
   },
 
+  /**
+   * POST /void-transaction  
+   * Voids a transaction.
+   */
   "/void-transaction": {
     POST: async (request, response, cfg) => {
       try {
@@ -605,6 +856,10 @@ export const braintreeRoutes: Routes = {
     }
   },
 
+  /**
+   * POST /delete-customer  
+   * Deletes a customer.
+   */
   "/delete-customer": {
     POST: async (request, response, cfg) => {
       try {
@@ -620,6 +875,10 @@ export const braintreeRoutes: Routes = {
     }
   },
 
+  /**
+   * POST /create-payment-method  
+   * Creates a new payment method for a customer.
+   */
   "/create-payment-method": {
     POST: async (request, response, cfg) => {
       try {
@@ -635,6 +894,10 @@ export const braintreeRoutes: Routes = {
     }
   },
 
+  /**
+   * POST /update-payment-method  
+   * Updates a payment method.
+   */
   "/update-payment-method": {
     POST: async (request, response, cfg) => {
       try {
@@ -650,6 +913,10 @@ export const braintreeRoutes: Routes = {
     }
   },
 
+  /**
+   * POST /delete-payment-method  
+   * Deletes a payment method.
+   */
   "/delete-payment-method": {
     POST: async (request, response, cfg) => {
       try {
@@ -665,6 +932,10 @@ export const braintreeRoutes: Routes = {
     }
   },
 
+  /**
+   * POST /create-subscription  
+   * Creates a subscription for a customer.
+   */
   "/create-subscription": {
     POST: async (request, response, cfg) => {
       try {
@@ -680,6 +951,10 @@ export const braintreeRoutes: Routes = {
     }
   },
 
+  /**
+   * POST /cancel-subscription  
+   * Cancels a subscription.
+   */
   "/cancel-subscription": {
     POST: async (request, response, cfg) => {
       try {
@@ -695,6 +970,10 @@ export const braintreeRoutes: Routes = {
     }
   },
 
+  /**
+   * POST /get-subscription  
+   * Retrieves a subscription by its ID.
+   */
   "/get-subscription": {
     POST: async (request, response, cfg) => {
       try {
