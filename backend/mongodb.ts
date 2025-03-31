@@ -87,11 +87,11 @@ export async function createProductListingInDB(
   if (!mongo.db) throw new Error("MongoDB not initialised");
   const newListing = createProductListing(props);
   const result = await mongo.db.collection('productListings').insertOne(newListing);
-  if (!newListing.listing_id) {
-    newListing.listing_id = result.insertedId.toString();
+  if (!newListing.listingId) {
+    newListing.listingId = result.insertedId.toString();
     await mongo.db.collection('productListings').updateOne(
       { _id: result.insertedId },
-      { $set: { listing_id: newListing.listing_id } }
+      { $set: { listingId: newListing.listingId } }
     );
   }
   return newListing;
@@ -104,7 +104,7 @@ export async function createProductListingInDB(
  */
 export async function getProductListingFromDB(listingId: string): Promise<ProductListing | null> {
   if (!mongo.db) throw new Error("MongoDB not initialised");
-  return await mongo.db.collection('productListings').findOne({ listing_id: listingId }) as ProductListing | null;
+  return await mongo.db.collection('productListings').findOne({ listingId: listingId }) as ProductListing | null;
 }
 
 /**
@@ -118,10 +118,10 @@ export async function updateProductListingInDB(
 ): Promise<ProductListing | null> {
   if (!mongo.db) throw new Error("MongoDB not initialised");
   await mongo.db.collection('productListings').updateOne(
-    { listing_id: listingId },
+    { listingId: listingId },
     { $set: updates }
   );
-  return await mongo.db.collection('productListings').findOne({ listing_id: listingId }) as ProductListing | null;
+  return await mongo.db.collection('productListings').findOne({ listingId: listingId }) as ProductListing | null;
 }
 
 /**
@@ -131,7 +131,7 @@ export async function updateProductListingInDB(
  */
 export async function deleteProductListingInDB(listingId: string): Promise<boolean> {
   if (!mongo.db) throw new Error("MongoDB not initialised");
-  const result = await mongo.db.collection('productListings').deleteOne({ listing_id: listingId });
+  const result = await mongo.db.collection('productListings').deleteOne({ listingId: listingId });
   return result.deletedCount === 1;
 }
 
@@ -152,11 +152,11 @@ export async function createSellerProfileInDB(
   if (!mongo.db) throw new Error("MongoDB not initialised");
   const newProfile = createSellerProfile(props);
   const result = await mongo.db.collection('sellerProfiles').insertOne(newProfile);
-  if (!newProfile.id) {
-    newProfile.id = result.insertedId.toString();
+  if (!newProfile.sellerId) {
+    newProfile.sellerId = result.insertedId.toString();
     await mongo.db.collection('sellerProfiles').updateOne(
       { _id: result.insertedId },
-      { $set: { id: newProfile.id } }
+      { $set: { sellerId: newProfile.sellerId } }
     );
   }
   return newProfile;
@@ -167,9 +167,9 @@ export async function createSellerProfileInDB(
  *
  * **Route (GET):** /db_sellerProfile_get?id=...
  */
-export async function getSellerProfileFromDB(profileId: string): Promise<SellerProfile | null> {
+export async function getSellerProfileFromDB(sellerId: string): Promise<SellerProfile | null> {
   if (!mongo.db) throw new Error("MongoDB not initialised");
-  return await mongo.db.collection('sellerProfiles').findOne({ id: profileId }) as SellerProfile | null;
+  return await mongo.db.collection('sellerProfiles').findOne({ sellerId: sellerId }) as SellerProfile | null;
 }
 
 /**
@@ -178,15 +178,15 @@ export async function getSellerProfileFromDB(profileId: string): Promise<SellerP
  * **Route (POST):** /db_sellerProfile_update?id=...
  */
 export async function updateSellerProfileInDB(
-  profileId: string,
+  sellerId: string,
   updates: Partial<SellerProfile>
 ): Promise<SellerProfile | null> {
   if (!mongo.db) throw new Error("MongoDB not initialised");
   await mongo.db.collection('sellerProfiles').updateOne(
-    { id: profileId },
+    { sellerId: sellerId },
     { $set: updates }
   );
-  return await mongo.db.collection('sellerProfiles').findOne({ id: profileId }) as SellerProfile | null;
+  return await mongo.db.collection('sellerProfiles').findOne({ id: sellerId }) as SellerProfile | null;
 }
 
 /**
@@ -194,9 +194,9 @@ export async function updateSellerProfileInDB(
  *
  * **Route (POST):** /db_sellerProfile_delete?id=...
  */
-export async function deleteSellerProfileInDB(profileId: string): Promise<boolean> {
+export async function deleteSellerProfileInDB(sellerId: string): Promise<boolean> {
   if (!mongo.db) throw new Error("MongoDB not initialised");
-  const result = await mongo.db.collection('sellerProfiles').deleteOne({ id: profileId });
+  const result = await mongo.db.collection('sellerProfiles').deleteOne({ sellerId: sellerId });
   return result.deletedCount === 1;
 }
 
@@ -217,11 +217,11 @@ export async function createUserProfileInDB(
   if (!mongo.db) throw new Error("MongoDB not initialised");
   const newUser = createUserProfile(props);
   const result = await mongo.db.collection('userProfiles').insertOne(newUser);
-  if (!newUser.id) {
-    newUser.id = result.insertedId.toString();
+  if (!newUser.userId) {
+    newUser.userId = result.insertedId.toString();
     await mongo.db.collection('userProfiles').updateOne(
       { _id: result.insertedId },
-      { $set: { id: newUser.id } }
+      { $set: { userId: newUser.userId } }
     );
   }
   return newUser;
@@ -234,7 +234,7 @@ export async function createUserProfileInDB(
  */
 export async function getUserProfileFromDB(userId: string): Promise<UserProfile | null> {
   if (!mongo.db) throw new Error("MongoDB not initialised");
-  return await mongo.db.collection('userProfiles').findOne({ id: userId }) as UserProfile | null;
+  return await mongo.db.collection('userProfiles').findOne({ userId: userId }) as UserProfile | null;
 }
 
 /**
@@ -251,7 +251,7 @@ export async function updateUserProfileInDB(
     { id: userId },
     { $set: updates }
   );
-  return await mongo.db.collection('userProfiles').findOne({ id: userId }) as UserProfile | null;
+  return await mongo.db.collection('userProfiles').findOne({ userId: userId }) as UserProfile | null;
 }
 
 /**
@@ -261,7 +261,7 @@ export async function updateUserProfileInDB(
  */
 export async function deleteUserProfileInDB(userId: string): Promise<boolean> {
   if (!mongo.db) throw new Error("MongoDB not initialised");
-  const result = await mongo.db.collection('userProfiles').deleteOne({ id: userId });
+  const result = await mongo.db.collection('userProfiles').deleteOne({ userId: userId });
   return result.deletedCount === 1;
 }
 
@@ -425,10 +425,10 @@ export const mongodbRoutes: Routes = {
     GET: async (request, response, cfg) => {
       try {
         const url = new URL(request.url!, `http://${request.headers.host}`);
-        const listingId = url.searchParams.get("listing_id");
+        const listingId = url.searchParams.get("listingId");
         if (!listingId) {
           setHeaders(response, 400);
-          response.end(JSON.stringify({ error: "Missing listing_id query parameter" }));
+          response.end(JSON.stringify({ error: "Missing listingId query parameter" }));
           return;
         }
         const listing = await getProductListingFromDB(listingId);
@@ -463,10 +463,10 @@ export const mongodbRoutes: Routes = {
     POST: async (request, response, cfg) => {
       try {
         const url = new URL(request.url!, `http://${request.headers.host}`);
-        const listingId = url.searchParams.get("listing_id");
+        const listingId = url.searchParams.get("listingId");
         if (!listingId) {
           setHeaders(response, 400);
-          response.end(JSON.stringify({ error: "Missing listing_id query parameter" }));
+          response.end(JSON.stringify({ error: "Missing listingId query parameter" }));
           return;
         }
         const body = await getRequestBody(request);
@@ -489,10 +489,10 @@ export const mongodbRoutes: Routes = {
     POST: async (request, response, cfg) => {
       try {
         const url = new URL(request.url!, `http://${request.headers.host}`);
-        const listingId = url.searchParams.get("listing_id");
+        const listingId = url.searchParams.get("listingId");
         if (!listingId) {
           setHeaders(response, 400);
-          response.end(JSON.stringify({ error: "Missing listing_id query parameter" }));
+          response.end(JSON.stringify({ error: "Missing listingId query parameter" }));
           return;
         }
         const success = await deleteProductListingInDB(listingId);
@@ -515,7 +515,7 @@ export const mongodbRoutes: Routes = {
     GET: async (request, response, cfg) => {
       try {
         const url = new URL(request.url!, `http://${request.headers.host}`);
-        const id = url.searchParams.get("id");
+        const id = url.searchParams.get("sellerId");
         if (!id) {
           setHeaders(response, 400);
           response.end(JSON.stringify({ error: "Missing id query parameter" }));
@@ -553,7 +553,7 @@ export const mongodbRoutes: Routes = {
     POST: async (request, response, cfg) => {
       try {
         const url = new URL(request.url!, `http://${request.headers.host}`);
-        const id = url.searchParams.get("id");
+        const id = url.searchParams.get("sellerId");
         if (!id) {
           setHeaders(response, 400);
           response.end(JSON.stringify({ error: "Missing id query parameter" }));
@@ -579,7 +579,7 @@ export const mongodbRoutes: Routes = {
     POST: async (request, response, cfg) => {
       try {
         const url = new URL(request.url!, `http://${request.headers.host}`);
-        const id = url.searchParams.get("id");
+        const id = url.searchParams.get("sellerId");
         if (!id) {
           setHeaders(response, 400);
           response.end(JSON.stringify({ error: "Missing id query parameter" }));
@@ -605,7 +605,7 @@ export const mongodbRoutes: Routes = {
     GET: async (request, response, cfg) => {
       try {
         const url = new URL(request.url!, `http://${request.headers.host}`);
-        const id = url.searchParams.get("id");
+        const id = url.searchParams.get("userId");
         if (!id) {
           setHeaders(response, 400);
           response.end(JSON.stringify({ error: "Missing id query parameter" }));
@@ -643,7 +643,7 @@ export const mongodbRoutes: Routes = {
     POST: async (request, response, cfg) => {
       try {
         const url = new URL(request.url!, `http://${request.headers.host}`);
-        const id = url.searchParams.get("id");
+        const id = url.searchParams.get("userId");
         if (!id) {
           setHeaders(response, 400);
           response.end(JSON.stringify({ error: "Missing id query parameter" }));
@@ -669,7 +669,7 @@ export const mongodbRoutes: Routes = {
     POST: async (request, response, cfg) => {
       try {
         const url = new URL(request.url!, `http://${request.headers.host}`);
-        const id = url.searchParams.get("id");
+        const id = url.searchParams.get("userId");
         if (!id) {
           setHeaders(response, 400);
           response.end(JSON.stringify({ error: "Missing id query parameter" }));
