@@ -113,5 +113,35 @@ export async function linkTransactionToOrder(
   
     // Return the newly created order.
     return newOrder;
-  }
+}
+  
+
+export const btMongoRoutes: Routes = {
+    "/link-transaction-to-order": {
+      POST: async (request, response, cfg) => {
+        try {
+          // Retrieve and parse the request body.
+          const body = await getRequestBody(request);
+          if(!body) throw new Error("")
+          const { transactionId, customerId, sellerId, orderData } = JSON.parse(body);
+          
+          // Validate required parameters.
+          if (!transactionId || !customerId || !sellerId || !orderData) {
+            throw new Error("Missing required parameters: transactionId, customerId, sellerId, or orderData");
+          }
+          
+          // Call the function to link the transaction to an order.
+          const order = await linkTransactionToOrder(transactionId, customerId, sellerId, orderData);
+          
+          // Set HTTP headers and return the created order.
+          setHeaders(response, 200);
+          response.end(JSON.stringify(order));
+        } catch (err) {
+          // On error, set headers to indicate failure and return the error message.
+          setHeaders(response, 500);
+          response.end(JSON.stringify({ error: err.message }));
+        }
+      }
+    }
+  };
   
