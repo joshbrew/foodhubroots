@@ -11,8 +11,8 @@
    Product Listing Data Structure
    ================================ */
    export type ProductListing = {
-    listing_id: string; // Unique identifier for the listing
-    seller_id: string; // Unique identifier for the seller
+    listingId: string; // Unique identifier for the listing
+    sellerId: string; // Unique identifier for the seller
     status: "active" | "inactive" | "pending" | "draft"; // Listing status
     visibility: "public" | "private" | "restricted"; // Who can view this listing
   
@@ -143,7 +143,7 @@
       reviews?: Record<
         string,
         {
-          user_id: string;
+          userId: string;
           rating: number;
           comment: string;
           timestamp: string;
@@ -188,7 +188,7 @@
      Seller Profile Data Structure
      ================================ */
   export type SellerProfile = {
-  id: string; // Unique identifier for the seller
+  sellerId: string; // Unique identifier for the seller
   name: string; // Seller or business name
   bio?: string; // Brief biography or description
 
@@ -267,7 +267,7 @@
     reviews?: Record<
       string,
       {
-        user_id: string;
+        userId: string;
         rating: number;
         comment: string;
         timestamp: string;
@@ -328,7 +328,7 @@
   User Profile Data Structure
   ================================ */
 export type UserProfile = {
-  id: string;
+  userId: string;
   name: {
     first_name: string;
     last_name: string;
@@ -367,7 +367,7 @@ export type UserProfile = {
       string,
       {
         product_id: string;
-        seller_id?: string;
+        sellerId?: string;
         name: string;
         quantity: number;
         price_per_unit: number;
@@ -462,8 +462,6 @@ export type Order = {
 }
 
 
-
-
 // Ticket represents a customer service support ticket.
 export type Ticket = {
   ticketId: string;
@@ -497,8 +495,8 @@ export type Ticket = {
    */
   export function createProductListing(props: Partial<ProductListing> = {}): ProductListing {
     const defaultProductListing: ProductListing = {
-      listing_id: "",
-      seller_id: "",
+      listingId: "",
+      sellerId: "",
       status: "draft",
       visibility: "public",
       product_info: {
@@ -564,7 +562,7 @@ export type Ticket = {
    */
   export function createSellerProfile(props: Partial<SellerProfile> = {}): SellerProfile {
     const defaultSellerProfile: SellerProfile = {
-      id: "",
+      sellerId: "",
       name: "",
       location: {
         country: "",
@@ -605,7 +603,7 @@ export type Ticket = {
    */
   export function createUserProfile(props: Partial<UserProfile> = {}): UserProfile {
     const defaultUserProfile: UserProfile = {
-      id: "",
+      userId: "",
       name: {
         first_name: "",
         last_name: "",
