@@ -188,281 +188,252 @@
      Seller Profile Data Structure
      ================================ */
   export type SellerProfile = {
-    id: string; // Unique identifier for the seller
-    name: string; // Seller or business name
-    bio?: string; // Brief biography or description
-  
-    location: {
-      country: string;
-      state?: string;
-      city?: string;
-      zipcode?: string;
+  id: string; // Unique identifier for the seller
+  name: string; // Seller or business name
+  bio?: string; // Brief biography or description
+
+  location: {
+    country: string;
+    state?: string;
+    city?: string;
+    zipcode?: string;
+    geo?: {
+      type: "Point";
+      coordinates: [number, number];
+    }[];
+    [key: string]: unknown;
+  };
+
+  contact: {
+    email?: string;
+    phone?: string;
+    website?: string;
+    socials?: Record<string, string>;
+    [key: string]: unknown;
+  };
+
+  products?: string[]; // Associated product listing IDs
+
+  seller_page?: {
+    layout: {
+      header?: {
+        title?: string;
+        splash?: string;
+        featured?: {
+          style?: number;
+          lists?: Record<string, unknown>;
+        };
+      };
+      body?: {
+        style?: number;
+        lists?: Record<
+          string,
+          {
+            ids?: string[];
+            categories?: string[];
+            tags?: Record<string, unknown>;
+            position?: number;
+          }
+        >;
+      };
+      footer?: {
+        style?: number;
+        lists?: Record<
+          string,
+          {
+            email?: boolean;
+            phone?: boolean;
+            socials?: boolean;
+          }
+        >;
+      };
+    };
+  };
+
+  media?: {
+    images?: Record<
+      string,
+      {
+        url: string;
+        description?: string;
+      }
+    >;
+    videos?: Record<string, string>;
+  };
+
+  ratings?: {
+    average_rating: number;
+    total_reviews: number;
+    reviews?: Record<
+      string,
+      {
+        user_id: string;
+        rating: number;
+        comment: string;
+        timestamp: string;
+        verified_purchase?: boolean;
+      }
+    >;
+  };
+
+  // Payment and shipping details for sub-merchant integrations.
+  braintree_submerchant_id?: string; // Braintree sub-merchant account ID for direct deposits
+  approval_status?: "pending" | "approved" | "suspended" | "rejected"; // Seller onboarding status
+  shipping_details?: {
+    shipping_fee_flat?: number;
+    shipping_fee_percentage?: number;
+    handling_fee?: number;
+  };
+
+  /**
+   * Certifications provided by the seller (e.g., food safety licenses).
+   * Key can be the certification type, value can be a number, URL, or document reference.
+   */
+  certifications?: Record<string, string>;
+
+  /**
+   * Seller's order history, where each entry points to a corresponding order.
+   * This record maps a unique key (for example, the orderId) to order summary details.
+   */
+  order_history?: Record<
+    string,
+    {
+      orderId: string;         // Unique order identifier (matches Order.orderId)
+      transactionId: string;   // Braintree transaction ID associated with this order
+      placed_at: string;       // Timestamp when the order was placed
+      status: "pending" | "approval_pending" | "processing" | "shipped" | "delivered" | "cancelled";
+    }
+  >;
+
+  metadata?: {
+    established_at?: string;
+    verified_seller?: boolean;
+    preferred_seller?: boolean;
+    seller_tags?: string[];
+    total_products?: number;
+    braintree_enabled?: boolean;
+    /**
+     * Optional default platform fee percentage applied to the seller’s listings.
+     */
+    default_platform_fee_percentage?: number;
+    /**
+     * Optional timestamp when the seller was approved.
+     */
+    approved_at?: string;
+  };
+};
+
+
+/* ================================
+  User Profile Data Structure
+  ================================ */
+export type UserProfile = {
+  id: string;
+  name: {
+    first_name: string;
+    last_name: string;
+  };
+  email: string;
+  phone?: string;
+  google_id?: string;
+  address_book: Record<
+    string,
+    {
+      label?: string;
+      address: {
+        street: string;
+        city: string;
+        state: string;
+        country: string;
+        zipcode: string;
+      }[];
       geo?: {
         type: "Point";
         coordinates: [number, number];
       }[];
-      [key: string]: unknown;
+    }
+  >;
+  preferences?: {
+    currency?: string;
+    language?: string;
+    notifications?: {
+      email?: boolean;
+      sms?: boolean;
     };
-  
-    contact: {
-      email?: string;
-      phone?: string;
-      website?: string;
-      socials?: Record<string, string>;
-      [key: string]: unknown;
-    };
-  
-    products?: string[]; // Associated product listing IDs
-  
-    seller_page?: {
-      layout: {
-        header?: {
-          title?: string;
-          splash?: string;
-          featured?: {
-            style?: number;
-            lists?: Record<string, unknown>;
-          };
-        };
-        body?: {
-          style?: number;
-          lists?: Record<
-            string,
-            {
-              ids?: string[];
-              categories?: string[];
-              tags?: Record<string, unknown>;
-              position?: number;
-            }
-          >;
-        };
-        footer?: {
-          style?: number;
-          lists?: Record<
-            string,
-            {
-              email?: boolean;
-              phone?: boolean;
-              socials?: boolean;
-            }
-          >;
-        };
-      };
-    };
-  
-    media?: {
-      images?: Record<
-        string,
-        {
-          url: string;
-          description?: string;
-        }
-      >;
-      videos?: Record<string, string>;
-    };
-  
-    ratings?: {
-      average_rating: number;
-      total_reviews: number;
-      reviews?: Record<
-        string,
-        {
-          user_id: string;
-          rating: number;
-          comment: string;
-          timestamp: string;
-          verified_purchase?: boolean;
-        }
-      >;
-    };
-  
-    // Payment and shipping details for sub-merchant integrations.
-    braintree_submerchant_id?: string; // Braintree sub-merchant account ID for direct deposits
-    approval_status?: "pending" | "approved" | "suspended" | "rejected"; // Seller onboarding status
-    shipping_details?: {
-      shipping_fee_flat?: number;
-      shipping_fee_percentage?: number;
-      handling_fee?: number;
-    };
-  
-    /**
-     * Certifications provided by the seller (e.g., food safety licenses).
-     * Key can be the certification type, value can be a number, URL, or document reference.
-     */
-    certifications?: Record<string, string>;
-  
-    metadata?: {
-      established_at?: string;
-      verified_seller?: boolean;
-      preferred_seller?: boolean;
-      seller_tags?: string[];
-      total_products?: number;
-      braintree_enabled?: boolean;
-      /**
-       * Optional default platform fee percentage applied to the seller’s listings.
-       */
-      default_platform_fee_percentage?: number;
-      /**
-       * Optional timestamp when the seller was approved.
-       */
-      approved_at?: string;
-    };
+    [key: string]: unknown;
   };
-  
-  /* ================================
-     User Profile Data Structure
-     ================================ */
-  export type UserProfile = {
-    id: string;
-    name: {
-      first_name: string;
-      last_name: string;
-    };
-    email: string;
-    phone?: string;
-    /**
-     * Optional identifier for Google or other OAuth providers.
-     */
-    google_id?: string;
-    address_book: Record<
+  cart: {
+    items: Record<
       string,
       {
-        label?: string;
-        address: {
-          street: string;
-          city: string;
-          state: string;
-          country: string;
-          zipcode: string;
-        }[];
-        geo?: {
-          type: "Point";
-          coordinates: [number, number];
-        }[];
+        product_id: string;
+        seller_id?: string;
+        name: string;
+        quantity: number;
+        price_per_unit: number;
+        total_price: number;
       }
     >;
-    preferences?: {
-      currency?: string;
-      language?: string;
-      notifications?: {
-        email?: boolean;
-        sms?: boolean;
-      };
-      [key: string]: unknown;
-    };
-    cart: {
+    total_price: number;
+    last_updated: string;
+  };
+  saved_carts?: Record<
+    string,
+    {
+      name: string;
       items: Record<
         string,
         {
           product_id: string;
-          seller_id?: string; // Optional seller reference for each item
           name: string;
           quantity: number;
           price_per_unit: number;
-          total_price: number;
         }
       >;
-      total_price: number;
-      last_updated: string;
-    };
-    saved_carts?: Record<
-      string,
-      {
-        name: string;
-        items: Record<
-          string,
-          {
-            product_id: string;
-            name: string;
-            quantity: number;
-            price_per_unit: number;
-          }
-        >;
-        saved_at: string;
-      }
-    >;
-    order_history: Record<
-      string,
-      {
-        /**
-         * Extended status to support orders requiring seller approval.
-         */
-        status:
-          | "pending"
-          | "approval_pending"
-          | "processing"
-          | "shipped"
-          | "delivered"
-          | "cancelled";
-        placed_at: string;
-        items: Record<
-          string,
-          {
-            product_id: string;
-            name: string;
-            quantity: number;
-            price_per_unit: number;
-            total_price: number;
-          }
-        >;
-        total_price: number;
-        shipping_address: {
-          street: string;
-          city: string;
-          state: string;
-          country: string;
-          zipcode: string;
-        };
-        tracking_info?: {
-          carrier: string;
-          tracking_number: string;
-          tracking_url?: string;
-        };
-        /**
-         * Optional information regarding chargebacks or refunds.
-         */
-        chargeback_info?: {
-          status: "none" | "pending" | "resolved";
-          reason?: string;
-          amount?: number;
-        };
-      }
-    >;
-    subscriptions?: Record<
-      string,
-      {
-        product_id: string;
-        name: string;
-        quantity: number;
-        price_per_unit: number;
-        interval: "daily" | "weekly" | "biweekly" | "monthly";
-        next_delivery: string;
-        status: "active" | "paused" | "cancelled";
-      }
-    >;
-    wishlist?: string[];
-    /**
-     * User role for permission management:
-     * - "customer"
-     * - "merchant"
-     * - "admin"
-     */
-    role?: "customer" | "merchant" | "admin";
-    metadata?: {
-      registered_at?: string;
-      vip_status?: boolean;
-      average_order_value?: number;
-      total_spent?: number;
-      lifetime_orders?: number;
-      braintree_customer_id?: string; // For linking saved payment methods
-    };
+      saved_at: string;
+    }
+  >;
+  // Updated order_history: only references to order IDs with their transaction IDs.
+  order_history: Record<
+    string,
+    {
+      orderId: string;           // Unique order identifier (matches Order.orderId)
+      transactionId: string;     // Braintree transaction id
+      placed_at: string;         // Date string when order was placed
+      status: "pending" | "approval_pending" | "processing" | "shipped" | "delivered" | "cancelled";
+    }
+  >;
+  subscriptions?: Record<
+    string,
+    {
+      product_id: string;
+      name: string;
+      quantity: number;
+      price_per_unit: number;
+      interval: "daily" | "weekly" | "biweekly" | "monthly";
+      next_delivery: string;
+      status: "active" | "paused" | "cancelled";
+    }
+  >;
+  wishlist?: string[];
+  role?: "customer" | "merchant" | "admin";
+  metadata?: {
+    registered_at?: string;
+    vip_status?: boolean;
+    average_order_value?: number;
+    total_spent?: number;
+    lifetime_orders?: number;
+    braintree_customer_id?: string;
   };
+};
+    
 
 
   
 // Order represents a customer order.
 export type Order = {
   orderId: string;
+  transactionId?: string; // Braintree transaction ID associated with this order
   customerId: string;
   items: Array<{ productId: string; quantity: number; price: number }>;
   total: number;
@@ -489,6 +460,8 @@ export type Order = {
     timestamp: Date;
   }>;
 }
+
+
 
 
 // Ticket represents a customer service support ticket.

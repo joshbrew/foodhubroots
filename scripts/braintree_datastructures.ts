@@ -353,7 +353,7 @@ gateway.customer.update("theCustomerId", {
   };
 
   
-  type TransactionLineItem = {
+type TransactionLineItem = {
     commodityCode?: string;
     description?: string;
     discountAmount?: string;
@@ -802,5 +802,5 @@ export {
     SubscriptionResponse, DiscountResponse, CreditCardResponse, VenmoAccountResponse, 
     UsBankAccountResponse, MerchantAccountResponse, SepaDebitAccountResponse, VisaCheckoutCardResponse,
     UsBankAccountVerificationResponse, ClientTokenRequest, CustomerCreateRequest,
-    CreditCardCreateRequest, CreditCardVerificationRequest, SubMerchantAccountWebhookNotification
+    CreditCardCreateRequest, CreditCardVerificationRequest, SubMerchantAccountWebhookNotification, TransactionLineItem
 }
