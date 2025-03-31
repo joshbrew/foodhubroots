@@ -7,6 +7,8 @@
  * order approval flows, and administrative configurations.
  */
 
+//the Ids should be generated serverside, dont rely on mongo auto generated _ids
+
 /* ================================
    Product Listing Data Structure
    ================================ */
