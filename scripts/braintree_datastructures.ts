@@ -50,7 +50,7 @@ enum SubMerchantAccountWebhookKind {
     SubMerchantAccountDeclined = "sub_merchant_account_declined",
 }
   
-  type SubMerchantAccountWebhookNotification = {
+type SubMerchantAccountWebhookNotification = {
     kind: SubMerchantAccountWebhookKind;
     timestamp: Date;
     merchantAccount: MerchantAccountResponse;
@@ -93,7 +93,6 @@ type CustomerResponse = {
     createdAt?: Date;
     updatedAt?: Date;
 };
-
 
   /**
 gateway.customer.create({

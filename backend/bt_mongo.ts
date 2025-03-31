@@ -6,7 +6,7 @@ import { btGateway, findTransaction } from './braintree';
 
 //mongo client after init
 import { createOrderInDB, getSellerProfileFromDB, getUserProfileFromDB, mongo, updateSellerProfileInDB, updateUserProfileInDB } from './mongodb';
-import { Order } from '../scripts/data';
+import { Order } from '../scripts/mongodb_datastructures';
 
 //need to have handles to connect mongodb and braintree calls, really should just be macros probably
 

@@ -35,7 +35,7 @@ import { MongoClient, Db } from 'mongodb';
 import { 
   ProductListing, SellerProfile, UserProfile, Order, Ticket, 
   createProductListing, createSellerProfile, createUserProfile
-} from '../scripts/data';
+} from '../scripts/mongodb_datastructures';
 
 
 
