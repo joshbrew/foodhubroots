@@ -10,6 +10,7 @@ import { getEnvVar, Routes, ServerConfig, setHeaders } from './backend/util';
 import { braintreeRoutes } from './backend/braintree';
 // Import routes and initialization function for MongoDB.
 import { mongodbRoutes, initMongoClient } from './backend/mongodb';
+import { btMongoRoutes } from './backend/bt_mongo';
 
 // External documentation links for Braintree integration:
 // https://developer.paypal.com/braintree/docs/start/overview/
@@ -50,7 +51,8 @@ const baseRoutes: Routes = {
 const routes: Routes = {
   ...baseRoutes,
   ...braintreeRoutes,
-  ...mongodbRoutes
+  ...mongodbRoutes,
+  ...btMongoRoutes
 }
 
 // --- Request handler ---
