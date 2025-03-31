@@ -40,17 +40,16 @@ export async function linkTransactionToOrder(
     }
     // Assuming the transaction has an "amount" property (as a string).
     const transactionTotal = parseFloat(transaction.amount);
-    
-    // 2. Set the order details based on transaction and provided IDs.
+  
+    // Set the order details based on transaction and provided IDs.
     orderData.transactionId = transactionId;
     orderData.customerId = customerId;
     orderData.total = transactionTotal;
-    
+  
     // Create a new Order in the database.
     const newOrder = await createOrderInDB(orderData);
-    
-    // 3. Update each associated product listing's available quantity.
-    // Iterate over each item in the order.
+  
+    // Update each associated product listing's available quantity.
     if (newOrder.items) {
       for (const item of newOrder.items) {
         // Retrieve the current product listing.
@@ -58,9 +57,8 @@ export async function linkTransactionToOrder(
         if (!listing) {
           throw new Error(`Product listing not found for id ${item.listingId}`);
         }
-        
-        // Compute the new available quantity.
         if (!listing.product_info?.inventory) continue;
+        
         const currentAvailable = listing.product_info.inventory.available_quantity;
         const newAvailable = currentAvailable - item.quantity;
         
@@ -69,44 +67,39 @@ export async function linkTransactionToOrder(
           throw new Error(`Insufficient inventory for listing ${item.listingId}`);
         }
         
-        // Preserve the existing product_info and update only the inventory.available_quantity.
-        const updatedInventory = {
-          ...listing.product_info.inventory,
-          available_quantity: newAvailable,
-        };
-        
-        const updatedProductInfo = {
-          ...listing.product_info,
-          inventory: updatedInventory,
-        };
-        
-        // Update the product listing with the new product_info.
+        // Create an update object for inventory changes.
+        const inventoryUpdate = { inventory: { available_quantity: newAvailable } };
+  
+        // Merge the update into the existing product_info using recursivelyAssign.
+        const updatedProductInfo = recursivelyAssign(
+          { ...listing.product_info },
+          inventoryUpdate
+        );
+  
+        // Update the product listing with the merged product_info.
         await updateProductListingInDB(item.listingId, { product_info: updatedProductInfo });
       }
     }
-    
-    // 4. Prepare an order entry to be recorded in both customer and seller profiles.
+  
+    // Prepare an order entry to be recorded in both customer and seller profiles.
     const orderEntry = {
       orderId: newOrder.orderId,
       transactionId,
       placed_at: new Date().toISOString(),
       status: newOrder.status,
     };
-    
+  
     // --- Update the Customer Profile ---
     const customerProfile = await getUserProfileFromDB(customerId);
     if (!customerProfile) {
       throw new Error(`Customer profile not found for id ${customerId}`);
     }
-    // Ensure order_history exists.
     if (!customerProfile.order_history) {
       customerProfile.order_history = {};
     }
-    // Add the new order entry.
     customerProfile.order_history[newOrder.orderId] = orderEntry;
-    // Update the customer profile in the database.
     await updateUserProfileInDB(customerId, { order_history: customerProfile.order_history });
-    
+  
     // --- Update the Seller Profile ---
     const sellerProfile = await getSellerProfileFromDB(sellerId);
     if (!sellerProfile) {
@@ -117,7 +110,7 @@ export async function linkTransactionToOrder(
     }
     sellerProfile.order_history[newOrder.orderId] = orderEntry;
     await updateSellerProfileInDB(sellerId, { order_history: sellerProfile.order_history });
-    
+  
     // Return the newly created order.
     return newOrder;
   }
