@@ -19,9 +19,9 @@ export type ProductListing = {
     visibility: "public" | "private" | "restricted"; // Who can view this listing
   
     product_info: {
-      name: string; // Product name
-      description: string; // Detailed product description
-      category: string; // Broad category (e.g., "Fruits")
+      name?: string; // Product name
+      description?: string; // Detailed product description
+      category?: string; // Broad category (e.g., "Fruits")
       subcategory?: string; // Optional subcategory (e.g., "Apples")
       tags?: string[]; // Searchable tags for improved discovery
       attributes?: {
@@ -35,7 +35,7 @@ export type ProductListing = {
         packaging?: string; // e.g., bulk, box, bag, etc.
         [key: string]: string | boolean | undefined; // Additional attributes
       };
-      pricing: {
+      pricing?: {
         currency: string; // e.g., "USD"
         retail_price?: number; // Single unit price (if applicable)
         price_tiers: Record<number, number>; // Tiered pricing (e.g., { 1: price, 10: discounted price })
@@ -44,8 +44,8 @@ export type ProductListing = {
           promotions?: string[];
         };
       };
-      inventory: {
-        minimum_quantity: number;
+      inventory?: {
+        minimum_quantity?: number;
         available_quantity: number;
         availability?: "in_stock" | "out_of_stock" | "preorder";
       };
@@ -433,7 +433,7 @@ export type Order = {
   orderId: string;
   transactionId?: string; // Braintree transaction ID associated with this order
   customerId: string;
-  items: Array<{ productId: string; quantity: number; price: number }>;
+  items: Array<{ listingId: string; quantity: number; price: number }>;
   total: number;
   status: "pending" | "approval_pending" | "processing" | "shipped" | "delivered" | "cancelled";
   createdAt: Date;

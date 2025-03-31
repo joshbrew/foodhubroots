@@ -5,8 +5,8 @@ import { getRequestBody, Routes, setHeaders } from './util';
 import { btGateway, findTransaction } from './braintree';
 
 //mongo client after init
-import { createOrderInDB, getSellerProfileFromDB, getUserProfileFromDB, mongo, updateSellerProfileInDB, updateUserProfileInDB } from './mongodb';
-import { Order } from '../scripts/mongodb_datastructures';
+import { createOrderInDB, getProductListingFromDB, getSellerProfileFromDB, getUserProfileFromDB, mongo, updateProductListingInDB, updateSellerProfileInDB, updateUserProfileInDB } from './mongodb';
+import { Order, recursivelyAssign } from '../scripts/mongodb_datastructures';
 
 //need to have handles to connect mongodb and braintree calls, really should just be macros probably
 
@@ -35,39 +35,76 @@ export async function linkTransactionToOrder(
   ): Promise<Order> {
     // Retrieve the Braintree transaction (this could include additional details if needed)
     const transaction = await findTransaction(transactionId);
-    
-    if(!transaction) {
-        throw new Error(`Transaction id ${transactionId} does not exist!`);
+    if (!transaction) {
+      throw new Error(`Transaction id ${transactionId} does not exist!`);
     }
-    // Incorporate the transaction details into the order record.
-    // Here we ensure the transactionId and customerId are set.
+    // Assuming the transaction has an "amount" property (as a string).
+    const transactionTotal = parseFloat(transaction.amount);
+    
+    // 2. Set the order details based on transaction and provided IDs.
     orderData.transactionId = transactionId;
     orderData.customerId = customerId;
-    // Additional order details (e.g., items, total, status) should be provided in orderData.
+    orderData.total = transactionTotal;
     
-    // Create a new order in the database.
+    // Create a new Order in the database.
     const newOrder = await createOrderInDB(orderData);
     
-    // Prepare an order entry to add to profiles.
+    // 3. Update each associated product listing's available quantity.
+    // Iterate over each item in the order.
+    if (newOrder.items) {
+      for (const item of newOrder.items) {
+        // Retrieve the current product listing.
+        const listing = await getProductListingFromDB(item.listingId);
+        if (!listing) {
+          throw new Error(`Product listing not found for id ${item.listingId}`);
+        }
+        
+        // Compute the new available quantity.
+        if (!listing.product_info?.inventory) continue;
+        const currentAvailable = listing.product_info.inventory.available_quantity;
+        const newAvailable = currentAvailable - item.quantity;
+        
+        // Optionally check for insufficient inventory.
+        if (newAvailable < 0) {
+          throw new Error(`Insufficient inventory for listing ${item.listingId}`);
+        }
+        
+        // Preserve the existing product_info and update only the inventory.available_quantity.
+        const updatedInventory = {
+          ...listing.product_info.inventory,
+          available_quantity: newAvailable,
+        };
+        
+        const updatedProductInfo = {
+          ...listing.product_info,
+          inventory: updatedInventory,
+        };
+        
+        // Update the product listing with the new product_info.
+        await updateProductListingInDB(item.listingId, { product_info: updatedProductInfo });
+      }
+    }
+    
+    // 4. Prepare an order entry to be recorded in both customer and seller profiles.
     const orderEntry = {
       orderId: newOrder.orderId,
-      transactionId: transactionId,
+      transactionId,
       placed_at: new Date().toISOString(),
       status: newOrder.status,
     };
-  
+    
     // --- Update the Customer Profile ---
     const customerProfile = await getUserProfileFromDB(customerId);
     if (!customerProfile) {
       throw new Error(`Customer profile not found for id ${customerId}`);
     }
-    // Initialize the order_history if needed.
+    // Ensure order_history exists.
     if (!customerProfile.order_history) {
       customerProfile.order_history = {};
     }
-    // Use the orderId as the key.
+    // Add the new order entry.
     customerProfile.order_history[newOrder.orderId] = orderEntry;
-    // Update the customer profile in the DB.
+    // Update the customer profile in the database.
     await updateUserProfileInDB(customerId, { order_history: customerProfile.order_history });
     
     // --- Update the Seller Profile ---
@@ -75,14 +112,13 @@ export async function linkTransactionToOrder(
     if (!sellerProfile) {
       throw new Error(`Seller profile not found for id ${sellerId}`);
     }
-    // Initialize the order_history if needed.
     if (!sellerProfile.order_history) {
       sellerProfile.order_history = {};
     }
     sellerProfile.order_history[newOrder.orderId] = orderEntry;
-    // Update the seller profile in the DB.
     await updateSellerProfileInDB(sellerId, { order_history: sellerProfile.order_history });
     
+    // Return the newly created order.
     return newOrder;
   }
   
