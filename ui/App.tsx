@@ -257,7 +257,6 @@ export class CreateSubMerchant extends sComponent {
             email: this.state.subMerchantEmail,
             phone: "3125551234",
             dateOfBirth: "10/9/1980",
-            ssn: "1234",
             address: {
               streetAddress: "123 Credibility St.",
               postalCode: "60606",
