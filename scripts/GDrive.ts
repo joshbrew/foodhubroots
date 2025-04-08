@@ -168,7 +168,7 @@ export class GDrive {
   directoryId: string; //the unique google id
   //fs = fs;
 
-  constructor(apiKey?, googleClientId?, directory?, discoverydocs?:string[], scope?:string) {
+  constructor(googleClientId?:string, directory?:string, discoverydocs?:string[], scope?:string) {
     if (directory) this.directory = directory;
     if (googleClientId)
       this.initGapi(googleClientId, discoverydocs, scope);

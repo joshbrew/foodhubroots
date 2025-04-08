@@ -435,6 +435,13 @@ export type Order = {
   customerId: string;
   items: Array<{ listingId: string; quantity: number; price: number }>;
   total: number;
+  metadata?: {
+    splitTransaction: {
+      transactionId: string;
+      subMerchantEarnings: string;
+      masterMerchantEarnings: string;
+    }
+  }
   status: "pending" | "approval_pending" | "processing" | "shipped" | "delivered" | "cancelled";
   createdAt: Date;
   updatedAt: Date;
