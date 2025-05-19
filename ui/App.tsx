@@ -1,6 +1,6 @@
 import React from "react";
 import dropin from "braintree-web-drop-in";
-import { sComponent } from "./components/util/state.component";
+import { sComponent, state } from "./components/util/state.component";
 
 const protocol = "https";
 
@@ -22,6 +22,7 @@ export class App extends sComponent {
       // Fetch a client token from your server
       const tokenRes = await fetch(protocol + "://localhost:3000/client-token");
       const tokenData = await tokenRes.json();
+      console.log(tokenData);
       // Store the client token and initialize the Drop-In UI
       this.setState({ clientToken: tokenData.clientToken });
       this.initializeDropIn();
@@ -54,7 +55,7 @@ export class App extends sComponent {
       <div style={{ margin: "20px" }}>
         <h1>Braintree Sandbox Test</h1>
         {/* Pass the dropInInstance prop to CreateCustomer */}
-        <CreateCustomer dropInInstance={this.state.dropInInstance} />
+        <CreateCustomer />
         <hr />
         <RegularCheckout />
         <hr />
@@ -71,58 +72,85 @@ export class App extends sComponent {
 // -------------------------------------------------------------------
 // 1. Create Customer Component (as an sComponent)
 // -------------------------------------------------------------------
-export class CreateCustomer extends sComponent<any,any> {
+
+export class CreateCustomer extends sComponent<{}, {
+  firstName: string;
+  lastName: string;
+  email: string;
+  clientToken: string | null;
+  dropInInstance: any;
+  createdCustomerId: string;
+  log: string;
+}> {
   state = {
     firstName: "",
     lastName: "",
     email: "",
+    clientToken: null as any,
+    dropInInstance: null as any,
     createdCustomerId: "",
     log: "",
   };
 
-  constructor(props: any) {
-    super(props);
+  async componentDidMount() {
+    try {
+      // 1) fetch the token
+      const res = await fetch(`${protocol}://localhost:3000/client-token`);
+      const { clientToken } = await res.json();
+      this.setState({ clientToken });
+
+      // 2) instantiate the drop-in UI
+      dropin.create(
+        {
+          authorization: clientToken,
+          container: "#dropin-container",
+        },
+        (err, instance) => {
+          if (err) {
+            console.error("dropin.create error:", err);
+            this.setState({ log: "Drop-in failed to initialize." });
+            return;
+          }
+          this.setState({ dropInInstance: instance });
+        }
+      );
+    } catch (err: any) {
+      console.error("Failed to fetch client token:", err);
+      this.setState({ log: "Could not get client token." });
+    }
   }
 
   handleCreateCustomer = async () => {
-    const dropInInstance = this.props.dropInInstance;
+    const { dropInInstance, firstName, lastName, email } = this.state;
     if (!dropInInstance) {
-      this.setState({ log: "Drop-in not ready yet." });
+      this.setState({ log: "Drop-in not ready." });
       return;
     }
 
     try {
-      // Request the payment nonce from the Drop-In UI
       const { nonce } = await dropInInstance.requestPaymentMethod();
-
-      // Call the /create-customer endpoint with customer details and the nonce
-      const response = await fetch(protocol + "://localhost:3000/create-customer", {
+      const response = await fetch(`${protocol}://localhost:3000/create-customer`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          firstName: this.state.firstName,
-          lastName: this.state.lastName,
-          email: this.state.email,
-          paymentMethodNonce: nonce,
-        }),
+        body: JSON.stringify({ firstName, lastName, email, paymentMethodNonce: nonce }),
       });
-
       const data = await response.json();
       if (data.success) {
         this.setState({
           createdCustomerId: data.customerId,
-          log: `Customer created successfully! ID: ${data.customerId}`,
+          log: `Customer created: ${data.customerId}`,
         });
       } else {
-        this.setState({ log: `Error creating customer: ${data.error}` });
+        this.setState({ log: `Error: ${data.error}` });
       }
     } catch (err: any) {
       console.error("Error creating customer:", err);
-      this.setState({ log: `Error creating customer: ${err.message}` });
+      this.setState({ log: err.message });
     }
   };
 
   render() {
+    const { firstName, lastName, email, createdCustomerId, log } = this.state;
     return (
       <div style={{ margin: "10px 0" }}>
         <h2>Create Customer</h2>
@@ -130,33 +158,35 @@ export class CreateCustomer extends sComponent<any,any> {
           <label>First Name:</label>
           <input
             type="text"
-            value={this.state.firstName}
-            onChange={(e) => this.setState({ firstName: e.target.value })}
+            value={firstName}
+            onChange={e => this.setState({ firstName: e.target.value })}
             style={{ marginRight: "10px" }}
           />
           <label>Last Name:</label>
           <input
             type="text"
-            value={this.state.lastName}
-            onChange={(e) => this.setState({ lastName: e.target.value })}
+            value={lastName}
+            onChange={e => this.setState({ lastName: e.target.value })}
             style={{ marginRight: "10px" }}
           />
           <label>Email:</label>
           <input
             type="text"
-            value={this.state.email}
-            onChange={(e) => this.setState({ email: e.target.value })}
+            value={email}
+            onChange={e => this.setState({ email: e.target.value })}
             style={{ marginRight: "10px" }}
           />
         </div>
-        {/* Braintree Drop-In UI container */}
-        <div id="dropin-container" style={{ margin: "10px 0" }}></div>
+
+        {/* this is where drop-in will attach itself */}
+        <div id="dropin-container" style={{ margin: "10px 0" }} />
+
         <button onClick={this.handleCreateCustomer}>Create Customer</button>
+
         <div style={{ margin: "5px 0" }}>
-          Current Customer ID:{" "}
-          <strong>{this.state.createdCustomerId || "None"}</strong>
+          Customer ID: <strong>{createdCustomerId || "None"}</strong>
         </div>
-        <div>{this.state.log}</div>
+        <div>{log}</div>
       </div>
     );
   }
