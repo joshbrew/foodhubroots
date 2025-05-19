@@ -408,6 +408,7 @@ export class DataListings extends sComponent {
     try {
       const response = await fetch(protocol + "://localhost:3000/transactions");
       const data = await response.json();
+      console.log(data);
       if (data.transactions) {
         this.setState({ transactions: data.transactions, log: "Transactions fetched successfully" });
       } else {
@@ -422,6 +423,7 @@ export class DataListings extends sComponent {
     try {
       const response = await fetch(protocol + "://localhost:3000/customers");
       const data = await response.json();
+      console.log(data);
       if (data.customers) {
         this.setState({ customers: data.customers, log: "Customers fetched successfully" });
       } else {
@@ -436,6 +438,7 @@ export class DataListings extends sComponent {
     try {
       const response = await fetch(protocol + "://localhost:3000/submerchants");
       const data = await response.json();
+      console.log(data);
       if (data.submerchants) {
         this.setState({ submerchants: data.submerchants, log: "Submerchants fetched successfully" });
       } else {

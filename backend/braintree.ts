@@ -287,13 +287,16 @@ export async function getTransactions(): Promise<TransactionResponse[]> {
       },
       // @ts-ignore
       (err: any, collection: any) => {
+        console.log(collection);
         if (err) return reject(err);
         collection.each((err: any, transaction: TransactionResponse) => {
+          console.log(transaction);
           if (err) return reject(err);
           result.push(transaction);
         }, () => resolve(result));
       }
     );
+
   });
 }
 
@@ -314,8 +317,10 @@ export async function getAllCustomers(): Promise<CustomerResponse[]> {
       },
       // @ts-ignore
       (err: any, collection: any) => {
+        console.log(collection);
         if (err) return reject(err);
         collection.each((err: any, customer: CustomerResponse) => {
+          console.log(customer);
           if (err) return reject(err);
           result.push(customer);
         }, () => resolve(result));
