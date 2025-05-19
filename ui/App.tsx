@@ -11,44 +11,6 @@ const protocol = "https";
 // Main App Component: Fetches client token and initializes Drop-In UI
 // -------------------------------------------------------------------
 export class App extends sComponent {
-  state = {
-    // Braintree Drop-In state
-    clientToken: null as string | null,
-    dropInInstance: null as any,
-  };
-
-  async componentDidMount() {
-    try {
-      // Fetch a client token from your server
-      const tokenRes = await fetch(protocol + "://localhost:3000/client-token");
-      const tokenData = await tokenRes.json();
-      console.log(tokenData);
-      // Store the client token and initialize the Drop-In UI
-      this.setState({ clientToken: tokenData.clientToken });
-      this.initializeDropIn();
-    } catch (err: any) {
-      console.error("Failed to fetch client token:", err);
-    }
-  }
-
-  initializeDropIn() {
-    const { clientToken } = this.state;
-    if (!clientToken) return;
-
-    dropin.create(
-      {
-        authorization: clientToken,
-        container: "#dropin-container",
-      },
-      (createErr, instance) => {
-        if (createErr) {
-          console.error("Drop-in create error:", createErr);
-          return;
-        }
-        this.setState({ dropInInstance: instance });
-      }
-    );
-  }
 
   render() {
     return (
@@ -82,6 +44,7 @@ export class CreateCustomer extends sComponent<{}, {
   createdCustomerId: string;
   log: string;
 }> {
+
   state = {
     firstName: "",
     lastName: "",
@@ -95,29 +58,40 @@ export class CreateCustomer extends sComponent<{}, {
   async componentDidMount() {
     try {
       // 1) fetch the token
-      const res = await fetch(`${protocol}://localhost:3000/client-token`);
-      const { clientToken } = await res.json();
-      this.setState({ clientToken });
-
-      // 2) instantiate the drop-in UI
-      dropin.create(
-        {
-          authorization: clientToken,
-          container: "#dropin-container",
-        },
-        (err, instance) => {
-          if (err) {
-            console.error("dropin.create error:", err);
-            this.setState({ log: "Drop-in failed to initialize." });
-            return;
-          }
-          this.setState({ dropInInstance: instance });
-        }
-      );
+      if(!this.state.clientToken) {
+        console.log("CreateCustomer Component getting client token")
+        const res = await fetch(`${protocol}://localhost:3000/client-token`);
+        const tokenData = await res.json();
+        await this.setState({ clientToken:tokenData.clientToken });
+        this.initializeDropIn();
+      }
     } catch (err: any) {
       console.error("Failed to fetch client token:", err);
       this.setState({ log: "Could not get client token." });
     }
+  }
+
+  
+  initializeDropIn() {
+    const { clientToken } = this.state;
+    if (!clientToken) {
+      console.log(clientToken, "No clientToken!");
+      return;
+    }
+
+    dropin.create(
+      {
+        authorization: clientToken,
+        container: "#dropin-container",
+      },
+      (createErr, instance) => {
+        if (createErr) {
+          console.error("Drop-in create error:", createErr);
+          return;
+        }
+        this.setState({ dropInInstance: instance });
+      }
+    );
   }
 
   handleCreateCustomer = async () => {

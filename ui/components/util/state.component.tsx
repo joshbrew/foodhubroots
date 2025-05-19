@@ -8,7 +8,7 @@ export class sComponent<P = {} & {
     doNotSubscribe?: string[]; // can skip certain props
 }, S = {}> extends Component<P, S> {
 
-    state={} as any;
+    state = {} as any;
 
     __statemgr = state as EventHandler;
     __state_subs: { [key: string]: number } = {};
@@ -16,15 +16,25 @@ export class sComponent<P = {} & {
     __unique = `component${Math.floor(Math.random() * 1000000000000000)}`;
 
     //@ts-ignore
-    react_setState = this.setState.bind(this);
+    setState(
+        partialState: Partial<S>,
+        callback?: () => void
+    ): Promise<void> {
+        return new Promise(resolve => {
+            // 1) call the real React setState with a callback
+            super.setState(partialState as any, () => {
+                // 2) relay to your EventHandler
+                this.__statemgr.setState(partialState);
 
-    setState = (s: any) => {
-        this.__updated = Object.keys(s);
-        this.react_setState(s);
-        if (typeof s === 'object') {
-            this.__statemgr.setState(s); // now relay through event handler
-        }
+                // 3) user‐supplied callback
+                if (callback) callback();
+
+                // 4) resolve the promise so callers can await
+                resolve();
+            });
+        });
     }
+
 
     constructor(
         props: P & {
@@ -49,7 +59,7 @@ export class sComponent<P = {} & {
             Object.assign(this.state, found);
         }
 
-        if(this.__statemgr.useLocalStorage) {
+        if (this.__statemgr.useLocalStorage) {
             this.__restoreLocalStorage();
         }
 
@@ -59,7 +69,7 @@ export class sComponent<P = {} & {
                 if (prop in this.__statemgr.data) found[prop as keyof S] = this.__statemgr.data[prop];
                 this.__subscribeComponent(prop);
             }
-            if (Object.keys(found).length > 0) this.react_setState(found); // override defaults
+            if (Object.keys(found).length > 0) super.setState(found as any); // override defaults
         }, 0.001);
     }
 
@@ -74,7 +84,7 @@ export class sComponent<P = {} & {
                 if (wasupdated > -1) {
                     this.__updated.splice(wasupdated, 1);
                 } else {
-                    this.react_setState({ [prop]: res } as Pick<S, keyof S>); // only updates one prop at a time rn
+                    super.setState({ [prop]: res } as Pick<S, keyof S>); // only updates one prop at a time rn
                 }
             }
         });
@@ -92,15 +102,15 @@ export class sComponent<P = {} & {
     }
 
     //should only have to run this once on a component and it will propagate to all others with the same state manager
-    __setUseLocalStorage(bool:boolean) {
+    __setUseLocalStorage(bool: boolean) {
         this.__statemgr.useLocalStorage = bool;
         this.__restoreLocalStorage();
-    }   
+    }
 
     __restoreLocalStorage() {
         let result = this.__statemgr.restoreLocalStorage(Object.keys(this.state));
-        if(result) {
-            Object.assign(this.state,result);
+        if (result) {
+            Object.assign(this.state, result);
         }
     }
 }
