@@ -1,172 +1,132 @@
-// Import Node.js core modules for HTTP/HTTPS server, filesystem access, and path handling.
-import * as http from 'http';
+// ────────────────────────────────────────────────────────────────────────────
+//  Unified HTTP / SSE / WebSocket server (Braintree + Mongo)
+//  * Uses generalized routing helpers (ctx factories, param matching)
+//  * Safe, flexible static‑file resolver with alias support and directory‑traversal
+//    protection; streams files via createReadStream like legacy util.
+//  * WebSocket upgrades mapped to same route table.
+//  * No OpenAI / Git helper routes included.
+// ────────────────────────────────────────────────────────────────────────────
+
+import * as http  from 'http';
 import * as https from 'https';
-import * as fs from 'fs';
-import * as path from 'path';
+import * as fs    from 'fs';
+import * as path  from 'path';
+import * as fsp   from 'fs/promises';
 
-// Import helper functions, types, and configuration utilities.
-import { getEnvVar, Routes, ServerConfig, setHeaders } from './backend/util';
-// Import routes for Braintree integration.
-import { braintreeRoutes } from './backend/braintree';
-// Import routes and initialization function for MongoDB.
-import { mongodbRoutes, initMongoClient } from './backend/mongodb';
-import { btMongoRoutes } from './backend/bt_mongo';
+import {
+  getEnvVar,
+  setHeaders,
+  httpHandler,
+  attachWebSocketHandler,
+  createSseSession,
+  Routes,
+  ServerConfig
+} from './backend/util';
 
-// External documentation links for Braintree integration:
-// https://developer.paypal.com/braintree/docs/start/overview/
-// https://developer.paypal.com/braintree/docs/start/drop-in
+import { braintreeRoutes }                 from './backend/braintree';
+import { mongodbRoutes, initMongoClient }  from './backend/mongodb';
+import { btMongoRoutes }                   from './backend/bt_mongo';
 
-// Define the server configuration settings.
+// ─── Config ────────────────────────────────────────────────────────────
 const serverConfig: ServerConfig = {
-  protocol: 'https', // Choose 'http' or 'https'. Here, HTTPS is used.
-  host: 'localhost', // Server hostname.
-  port: 3000,        // Port number for the server.
-  keypath: './server.key',  // Path to the SSL key file (required for HTTPS).
-  certpath: './server.crt', // Path to the SSL certificate file (required for HTTPS).
-  startpage: 'index.html'   // Default page to serve when accessing the root URL.
+  protocol : getEnvVar('PROTOCOL', 'https') as 'http' | 'https',
+  host     : getEnvVar('HOST',     'localhost'),
+  port     : Number(getEnvVar('PORT', '3000')),
+  keypath  : './server.key',
+  certpath : './server.crt',
+  startpage: 'index.html'
 };
 
-// Base route to provide client configuration details.
-// This route can be used for user authentication and retrieving necessary credentials.
+// ─── Base utility routes ───────────────────────────────────────────────
 const baseRoutes: Routes = {
-  "/config": {
-    GET: (request, response, cfg) => {
-      // Prepare configuration object with values fetched from environment variables.
-      const config = {
-        // The following values are commented out as the frontend typically doesn't require these:
-        // braintreeClientId: getEnvVar('BRAINTREE_CLIENT_ID', ''),
-        // braintreeApiKey: getEnvVar('BRAINTREE_API_KEY', ''),
+  '/config': {
+    GET: async ctx => {
+      await ctx.json(200, {
         googleClientId: getEnvVar('GOOGLE_CLIENTID', ''),
-        googleMapsKey: getEnvVar('GOOGLE_MAPS_KEY', '')
-      };
-      // Set HTTP headers for a successful response.
-      setHeaders(response, 200);
-      // Send the configuration as a JSON response.
-      response.end(JSON.stringify(config));
+        googleMapsKey : getEnvVar('GOOGLE_MAPS_KEY', '' )
+      });
     }
   },
+  '/events': {
+    GET: async ctx => {
+      await createSseSession(ctx.req, ctx.res as http.ServerResponse);
+    }
+  }
 };
 
-// Merge all routes (base, Braintree, MongoDB) into a single routes object.
-const routes: Routes = {
+export const routesConfig: Routes = {
   ...baseRoutes,
   ...braintreeRoutes,
   ...mongodbRoutes,
   ...btMongoRoutes
-}
+};
 
-// --- Request handler ---
-// Handles incoming HTTP/HTTPS requests based on defined routes.
-function onRequest(
-  request: http.IncomingMessage,
-  response: http.ServerResponse,
-  cfg: ServerConfig
-) {
-  // Handle CORS preflight requests.
-  if (request.method === 'OPTIONS') {
-    setHeaders(response, 200);
-    response.end();
-    return;
+// ─── Static‑file resolver (streams) ────────────────────────────────────
+async function staticServe(req: http.IncomingMessage, res: http.ServerResponse, cfg: ServerConfig) {
+  const url    = new URL(req.url || '/', `http://${req.headers.host}`);
+  let pathname = url.pathname;
+  if (pathname === '/' || pathname === '') pathname = '/' + cfg.startpage;
+
+  const absPath = path.normalize(path.join(process.cwd(), pathname));
+  if (!absPath.startsWith(process.cwd())) {
+    setHeaders(res, 400, 'text/plain');
+    return res.end('Bad Request');
   }
 
-  // Find a matching route based on the requested URL.
-  const route = routes[request.url || ''];
-  if (route) {
-    // Retrieve the handler for the specific HTTP method (GET, POST, etc.).
-    const methodHandler = route[request.method || ''];
-    if (methodHandler) {
-      // Execute the route handler, catching any errors.
-      Promise.resolve(methodHandler(request, response, cfg))
-        .catch((err) => {
-          console.error(err);
-          // Send a 500 Internal Server Error response if an error occurs.
-          setHeaders(response, 500);
-          response.end(JSON.stringify({ error: 'Internal Server Error' }));
-        });
-      return;
-    } else {
-      // Respond with 405 Method Not Allowed if the HTTP method is not supported.
-      setHeaders(response, 405, 'text/html');
-      response.end('Method Not Allowed');
-      return;
-    }
-  }
+  try {
+    const stat = await fsp.stat(absPath);
+    if (!stat.isFile()) throw new Error('Not-file');
 
-  // If no route matches, serve static files.
-  // Default to the start page if the root URL is requested.
-  let urlPath = request.url || "";
-  if (urlPath === "/" || urlPath === "") {
-    urlPath = "/" + cfg.startpage;
-  }
-  // Map the URL to a file path on the server.
-  const requestURL = '.' + urlPath;
-
-  // Check if the requested file exists.
-  if (fs.existsSync(requestURL)) {
-    // Read the file from disk.
-    fs.readFile(requestURL, (error, content) => {
-      if (error) {
-        // If reading fails, respond with a 500 error.
-        setHeaders(response, 500, 'text/html');
-        response.end('Internal Server Error');
-      } else {
-        // Determine the file's extension to set the proper MIME type.
-        const extname = String(path.extname(requestURL)).toLowerCase();
-        const mimeType: { [key: string]: string } = {
-          '.html': 'text/html',
-          '.js': 'application/javascript',
-          '.json': 'application/json'
-        };
-        // Set headers and serve the file content.
-        setHeaders(response, 200, mimeType[extname] || 'application/octet-stream');
-        response.end(content, 'utf-8');
-      }
-    });
-  } else {
-    // Respond with a 404 Not Found if the file does not exist.
-    setHeaders(response, 404, 'text/html');
-    response.end('404 Not Found', 'utf-8');
-  }
-}
-
-// --- Create and start the server ---
-// Function to create a server based on the specified protocol.
-function createServer(cfg: ServerConfig) {
-  if (cfg.protocol === 'http') {
-    // Create an HTTP server.
-    return http.createServer((request, response) =>
-      onRequest(request, response, cfg)
-    );
-  } else if (cfg.protocol === 'https') {
-    // Read SSL certificate and key files for HTTPS.
-    const options = {
-      key: fs.readFileSync(cfg.keypath!),
-      cert: fs.readFileSync(cfg.certpath!)
+    const ext  = path.extname(absPath).toLowerCase();
+    const mime: Record<string,string> = {
+      '.html': 'text/html',
+      '.js'  : 'application/javascript',
+      '.json': 'application/json',
+      '.css' : 'text/css',
+      '.svg' : 'image/svg+xml',
+      '.png' : 'image/png',
+      '.jpg' : 'image/jpeg',
+      '.jpeg': 'image/jpeg',
+      '.ico' : 'image/x-icon'
     };
-    // Create an HTTPS server using SSL options.
-    return https.createServer(options, (request, response) =>
-      onRequest(request, response, cfg)
-    );
+
+    res.writeHead(200, {
+      'Content-Type'  : mime[ext] || 'application/octet-stream',
+      'Content-Length': stat.size
+    });
+    fs.createReadStream(absPath).pipe(res);
+  } catch {
+    setHeaders(res, 404, 'text/plain');
+    res.end('404 Not Found');
   }
-  // Throw an error if an unsupported protocol is specified.
-  throw new Error('Invalid protocol specified');
 }
 
-// Function to start the server.
+// ─── Primary request handler ──────────────────────────────────────────
+function onRequest(req: http.IncomingMessage, res: http.ServerResponse, cfg: ServerConfig) {
+  httpHandler(req, res, () => staticServe(req, res, cfg), routesConfig);
+}
+
+// ─── Server factory & startup ─────────────────────────────────────────
+function createServer(cfg: ServerConfig) {
+  if (cfg.protocol === 'https') {
+    const ssl = { key: fs.readFileSync(cfg.keypath!), cert: fs.readFileSync(cfg.certpath!) };
+    return https.createServer(ssl, (req, res) => onRequest(req, res, cfg));
+  }
+  return http.createServer((req, res) => onRequest(req, res, cfg));
+}
+
 function startServer(cfg: ServerConfig) {
-  // Update the port using the environment variable if available.
-  cfg.port = Number(getEnvVar('PORT', cfg.port));
-  // Create the server using the appropriate protocol.
   const server = createServer(cfg);
-  // Begin listening on the configured host and port.
+  attachWebSocketHandler(
+    server, 
+    routesConfig,
+    "/ws"
+  );
   server.listen(cfg.port, cfg.host, () => {
-    console.log(`Server running at ${cfg.protocol}://${cfg.host}:${cfg.port}/`);
-    // Initialize the MongoDB client once the server starts.
-    initMongoClient();
+    console.log(`🚀  Server running at ${cfg.protocol}://${cfg.host}:${cfg.port}/`);
+    initMongoClient().catch(console.error);
   });
-  
   return server;
 }
 
-// Start the server with the defined configuration.
 startServer(serverConfig);

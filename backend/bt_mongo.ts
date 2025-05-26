@@ -1,4 +1,4 @@
-import { getRequestBody, Routes, setHeaders } from './util';
+import { Context, Routes } from './util';
 
 // MongoDB helpers
 import { 
@@ -355,236 +355,224 @@ export async function syncTransactionWithOrder(
 ==================================================== */
 
 export const btMongoRoutes: Routes = {
-  // Existing endpoint.
+  /* ─────────────  TRANSACTION ↔ ORDER LINK  ───────────── */
   "/link-transaction-to-order": {
-    POST: async (request, response, cfg) => {
+    POST: async (ctx: Context) => {
       try {
-        const body = await getRequestBody(request);
-        if (!body) throw new Error("Request body is empty");
-        const { transactionId, customerId, sellerId, orderData } = JSON.parse(body);
+        const { transactionId, customerId, sellerId, orderData }
+              = await ctx.body();
         if (!transactionId || !customerId || !sellerId || !orderData) {
           throw new Error("Missing required parameters");
         }
-        const order = await linkTransactionToOrder(transactionId, customerId, sellerId, orderData);
-        setHeaders(response, 200);
-        response.end(JSON.stringify(order));
+        const order = await linkTransactionToOrder(
+          transactionId, customerId, sellerId, orderData
+        );
+        await ctx.json(200, order);
       } catch (err: any) {
-        setHeaders(response, 500);
-        response.end(JSON.stringify({ error: err.message }));
+        await ctx.json(500, { error: err.message });
       }
     }
   },
+
+  /* ─────────────  SIMPLE CHECKOUT (creates order)  ───────────── */
   "/checkout-order": {
-    POST: async (request, response, cfg) => {
+    POST: async (ctx: Context) => {
       try {
-        const { customerId, amount } = JSON.parse(await getRequestBody(request));
+        const { customerId, amount } = await ctx.body();
         if (!customerId || !amount) throw new Error("Missing customerId or amount");
         const transactionId = await processCheckoutOrder(customerId, amount);
-        setHeaders(response, 200);
-        response.end(JSON.stringify({ success: true, transactionId }));
+        await ctx.json(200, { success: true, transactionId });
       } catch (err: any) {
         notifyError(err);
-        setHeaders(response, 500);
-        response.end(JSON.stringify({ error: err.message }));
+        await ctx.json(500, { error: err.message });
       }
     }
   },
+
+  /* ─────────────  INVENTORY BATCH OPS  ───────────── */
   "/batch-update-inventory": {
-    POST: async (request, response, cfg) => {
+    POST: async (ctx: Context) => {
       try {
-        const { orderItems } = JSON.parse(await getRequestBody(request));
+        const { orderItems } = await ctx.body();
         if (!orderItems) throw new Error("Missing orderItems");
         await batchUpdateInventory(orderItems);
-        setHeaders(response, 200);
-        response.end(JSON.stringify({ success: true }));
+        await ctx.json(200, { success: true });
       } catch (err: any) {
         notifyError(err);
-        setHeaders(response, 500);
-        response.end(JSON.stringify({ error: err.message }));
+        await ctx.json(500, { error: err.message });
       }
     }
   },
+
   "/batch-restore-inventory": {
-    POST: async (request, response, cfg) => {
+    POST: async (ctx: Context) => {
       try {
-        const { orderItems } = JSON.parse(await getRequestBody(request));
+        const { orderItems } = await ctx.body();
         if (!orderItems) throw new Error("Missing orderItems");
         await batchRestoreInventory(orderItems);
-        setHeaders(response, 200);
-        response.end(JSON.stringify({ success: true }));
+        await ctx.json(200, { success: true });
       } catch (err: any) {
         notifyError(err);
-        setHeaders(response, 500);
-        response.end(JSON.stringify({ error: err.message }));
+        await ctx.json(500, { error: err.message });
       }
     }
   },
+
+  /* ─────────────  CUSTOMERS W/ PROFILE  ───────────── */
   "/create-customer-with-profile": {
-    POST: async (request, response, cfg) => {
+    POST: async (ctx: Context) => {
       try {
-        const data = JSON.parse(await getRequestBody(request));
-        // data should include the Braintree customer fields and a nested profileData.
+        const data = await ctx.body();
         const result = await createCustomerWithProfile(data);
-        setHeaders(response, 201);
-        response.end(JSON.stringify(result));
+        await ctx.json(201, result);
       } catch (err: any) {
         notifyError(err);
-        setHeaders(response, 500);
-        response.end(JSON.stringify({ error: err.message }));
+        await ctx.json(500, { error: err.message });
       }
     }
   },
+
   "/update-customer-details": {
-    POST: async (request, response, cfg) => {
+    POST: async (ctx: Context) => {
       try {
-        const data = JSON.parse(await getRequestBody(request));
+        const data = await ctx.body();
         if (!data.customerId || !data.updateBraintree || !data.updateMongo) {
           throw new Error("Missing required parameters");
         }
         await updateCustomerDetails(data);
-        setHeaders(response, 200);
-        response.end(JSON.stringify({ success: true }));
+        await ctx.json(200, { success: true });
       } catch (err: any) {
         notifyError(err);
-        setHeaders(response, 500);
-        response.end(JSON.stringify({ error: err.message }));
+        await ctx.json(500, { error: err.message });
       }
     }
   },
+
+  /* ─────────────  REFUND / VOID w/ ORDER UPDATE  ───────────── */
   "/refund-and-mark-order": {
-    POST: async (request, response, cfg) => {
+    POST: async (ctx: Context) => {
       try {
-        const { transactionId, orderId, amount } = JSON.parse(await getRequestBody(request));
-        if (!transactionId || !orderId) throw new Error("Missing transactionId or orderId");
+        const { transactionId, orderId, amount } = await ctx.body();
+        if (!transactionId || !orderId) {
+          throw new Error("Missing transactionId or orderId");
+        }
         const refundId = await refundTransactionAndMarkOrder(transactionId, orderId, amount);
-        setHeaders(response, 200);
-        response.end(JSON.stringify({ success: true, refundId }));
+        await ctx.json(200, { success: true, refundId });
       } catch (err: any) {
         notifyError(err);
-        setHeaders(response, 500);
-        response.end(JSON.stringify({ error: err.message }));
+        await ctx.json(500, { error: err.message });
       }
     }
   },
+
   "/void-and-cancel-order": {
-    POST: async (request, response, cfg) => {
+    POST: async (ctx: Context) => {
       try {
-        const { transactionId, orderId } = JSON.parse(await getRequestBody(request));
-        if (!transactionId || !orderId) throw new Error("Missing transactionId or orderId");
+        const { transactionId, orderId } = await ctx.body();
+        if (!transactionId || !orderId) {
+          throw new Error("Missing transactionId or orderId");
+        }
         const voidId = await voidTransactionAndCancelOrder(transactionId, orderId);
-        setHeaders(response, 200);
-        response.end(JSON.stringify({ success: true, voidId }));
+        await ctx.json(200, { success: true, voidId });
       } catch (err: any) {
         notifyError(err);
-        setHeaders(response, 500);
-        response.end(JSON.stringify({ error: err.message }));
+        await ctx.json(500, { error: err.message });
       }
     }
   },
+
+  /* ─────────────  INVENTORY RESTORE FROM ORDER  ───────────── */
   "/restore-inventory": {
-    POST: async (request, response, cfg) => {
+    POST: async (ctx: Context) => {
       try {
-        const { orderId } = JSON.parse(await getRequestBody(request));
+        const { orderId } = await ctx.body();
         if (!orderId) throw new Error("Missing orderId");
-        // Assume getOrderFromDB is available to retrieve the order.
-        // Here, for simplicity, we reconstruct a minimal order for restoration.
-        const order: Order = { orderId, items: [] as any, customerId: "", total: 0, status: "cancelled", createdAt: new Date(), updatedAt: new Date() };
-        // In a real implementation, retrieve the order from the DB.
-        await restoreInventoryOnCancellation(order);
-        setHeaders(response, 200);
-        response.end(JSON.stringify({ success: true }));
+        const order = { orderId, items: [], customerId: "", total: 0,
+                        status: "cancelled", createdAt: new Date(), updatedAt: new Date() };
+        await restoreInventoryOnCancellation(order as any);
+        await ctx.json(200, { success: true });
       } catch (err: any) {
         notifyError(err);
-        setHeaders(response, 500);
-        response.end(JSON.stringify({ error: err.message }));
+        await ctx.json(500, { error: err.message });
       }
     }
   },
+
+  /* ─────────────  SUB-MERCHANT / SPLIT-PAYMENT  ───────────── */
   "/create-submerchant": {
-    POST: async (request, response, cfg) => {
+    POST: async (ctx: Context) => {
       try {
-        const data = JSON.parse(await getRequestBody(request));
+        const data = await ctx.body();
         if (!data.individual || !data.funding || !data.sellerId) {
           throw new Error("Missing required parameters");
         }
         const result = await createSubmerchantAndUpdateSeller(data);
-        setHeaders(response, 200);
-        response.end(JSON.stringify(result));
+        await ctx.json(200, result);
       } catch (err: any) {
         notifyError(err);
-        setHeaders(response, 500);
-        response.end(JSON.stringify({ error: err.message }));
+        await ctx.json(500, { error: err.message });
       }
     }
   },
+
   "/split-transaction-record": {
-    POST: async (request, response, cfg) => {
+    POST: async (ctx: Context) => {
       try {
-        const data = JSON.parse(await getRequestBody(request));
+        const data = await ctx.body();
         if (!data.subMerchantAccountId || !data.amount || !data.orderId) {
           throw new Error("Missing required parameters");
         }
         const result = await splitTransactionAndRecord(data);
-        setHeaders(response, 200);
-        response.end(JSON.stringify(result));
+        await ctx.json(200, result);
       } catch (err: any) {
         notifyError(err);
-        setHeaders(response, 500);
-        response.end(JSON.stringify({ error: err.message }));
+        await ctx.json(500, { error: err.message });
       }
     }
   },
+
+  /* ─────────────  SUBSCRIPTIONS  ───────────── */
   "/create-subscription": {
-    POST: async (request, response, cfg) => {
+    POST: async (ctx: Context) => {
       try {
-        const data = JSON.parse(await getRequestBody(request));
+        const data = await ctx.body();
         if (!data.paymentMethodToken || !data.planId || !data.customerId) {
           throw new Error("Missing required parameters");
         }
         const result = await createSubscriptionAndStore(data);
-        setHeaders(response, 200);
-        response.end(JSON.stringify(result));
+        await ctx.json(200, result);
       } catch (err: any) {
         notifyError(err);
-        setHeaders(response, 500);
-        response.end(JSON.stringify({ error: err.message }));
+        await ctx.json(500, { error: err.message });
       }
     }
   },
+
+  /* ─────────────  ORDER HISTORY & SYNC  ───────────── */
   "/get-order-history": {
-    GET: async (request, response, cfg) => {
+    GET: async (ctx: Context) => {
       try {
-        const url = new URL(request.url!, `http://${request.headers.host}`);
-        const userId = url.searchParams.get("userId");
-        const type = url.searchParams.get("type") as "customer" | "seller";
-        if (!userId || !type) {
-          throw new Error("Missing userId or type query parameter");
-        }
-        const history = await getOrderHistory(userId, type);
-        setHeaders(response, 200);
-        response.end(JSON.stringify(history));
+        const { userId, type } = ctx.query as Record<string, string>;
+        if (!userId || !type) throw new Error("Missing userId or type query parameter");
+        const history = await getOrderHistory(userId, type as "customer" | "seller");
+        await ctx.json(200, history);
       } catch (err: any) {
         notifyError(err);
-        setHeaders(response, 500);
-        response.end(JSON.stringify({ error: err.message }));
+        await ctx.json(500, { error: err.message });
       }
     }
   },
+
   "/sync-transaction-with-order": {
-    GET: async (request, response, cfg) => {
+    GET: async (ctx: Context) => {
       try {
-        const url = new URL(request.url!, `http://${request.headers.host}`);
-        const orderId = url.searchParams.get("orderId");
-        if (!orderId) {
-          throw new Error("Missing orderId query parameter");
-        }
+        const { orderId } = ctx.query as Record<string, string>;
+        if (!orderId) throw new Error("Missing orderId query parameter");
         const result = await syncTransactionWithOrder(orderId);
-        setHeaders(response, 200);
-        response.end(JSON.stringify(result));
+        await ctx.json(200, result);
       } catch (err: any) {
         notifyError(err);
-        setHeaders(response, 500);
-        response.end(JSON.stringify({ error: err.message }));
+        await ctx.json(500, { error: err.message });
       }
     }
   }

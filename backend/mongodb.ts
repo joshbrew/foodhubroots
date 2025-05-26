@@ -29,7 +29,7 @@
  * 3. Use the provided CRUD functions directly or via the exposed HTTP endpoints.
  */
 
-import { getEnvVar, getRequestBody, Routes, setHeaders } from "./util";
+import { Context, getEnvVar, Routes } from "./util";
 import { MongoClient, Db } from 'mongodb';
 // Import core types and helper functions from Roots FoodHub MVP.
 import { 
@@ -420,478 +420,277 @@ export async function listTicketsInDB(): Promise<Ticket[]> {
    All endpoints use only GET and POST routes with an explicit "/db_" prefix.
 */
 export const mongodbRoutes: Routes = {
-  // --------- ProductListing Routes ---------
+  /* ─────────────  PRODUCT LISTING  ───────────── */
   "/db_productListing_get": {
-    GET: async (request, response, cfg) => {
-      try {
-        const url = new URL(request.url!, `http://${request.headers.host}`);
-        const listingId = url.searchParams.get("listingId");
-        if (!listingId) {
-          setHeaders(response, 400);
-          response.end(JSON.stringify({ error: "Missing listingId query parameter" }));
-          return;
-        }
-        const listing = await getProductListingFromDB(listingId);
-        if (!listing) {
-          setHeaders(response, 404);
-          response.end(JSON.stringify({ error: "ProductListing not found" }));
-          return;
-        }
-        setHeaders(response, 200);
-        response.end(JSON.stringify(listing));
-      } catch (error: any) {
-        setHeaders(response, 500);
-        response.end(JSON.stringify({ error: error.message }));
-      }
+    GET: async (ctx: Context) => {
+      const { listingId } = ctx.query as Record<string, string>;
+      if (!listingId)
+        return ctx.json(400, { error: "Missing listingId query parameter" });
+
+      const listing = await getProductListingFromDB(listingId);
+      if (!listing)
+        return ctx.json(404, { error: "ProductListing not found" });
+
+      await ctx.json(200, listing);
     }
   },
+
   "/db_productListing_create": {
-    POST: async (request, response, cfg) => {
-      try {
-        const body = await getRequestBody(request);
-        const data = JSON.parse(body);
-        const newListing = await createProductListingInDB(data);
-        setHeaders(response, 201);
-        response.end(JSON.stringify(newListing));
-      } catch (error: any) {
-        setHeaders(response, 500);
-        response.end(JSON.stringify({ error: error.message }));
-      }
+    POST: async (ctx: Context) => {
+      const data = await ctx.body();
+      const newListing = await createProductListingInDB(data);
+      await ctx.json(201, newListing);
     }
   },
+
   "/db_productListing_update": {
-    POST: async (request, response, cfg) => {
-      try {
-        const url = new URL(request.url!, `http://${request.headers.host}`);
-        const listingId = url.searchParams.get("listingId");
-        if (!listingId) {
-          setHeaders(response, 400);
-          response.end(JSON.stringify({ error: "Missing listingId query parameter" }));
-          return;
-        }
-        const body = await getRequestBody(request);
-        const updates = JSON.parse(body);
-        const updatedListing = await updateProductListingInDB(listingId, updates);
-        if (!updatedListing) {
-          setHeaders(response, 404);
-          response.end(JSON.stringify({ error: "ProductListing not found" }));
-          return;
-        }
-        setHeaders(response, 200);
-        response.end(JSON.stringify(updatedListing));
-      } catch (error: any) {
-        setHeaders(response, 500);
-        response.end(JSON.stringify({ error: error.message }));
-      }
+    POST: async (ctx: Context) => {
+      const { listingId } = ctx.query as Record<string, string>;
+      if (!listingId)
+        return ctx.json(400, { error: "Missing listingId query parameter" });
+
+      const updates = await ctx.body();
+      const updatedListing = await updateProductListingInDB(listingId, updates);
+      if (!updatedListing)
+        return ctx.json(404, { error: "ProductListing not found" });
+
+      await ctx.json(200, updatedListing);
     }
   },
+
   "/db_productListing_delete": {
-    POST: async (request, response, cfg) => {
-      try {
-        const url = new URL(request.url!, `http://${request.headers.host}`);
-        const listingId = url.searchParams.get("listingId");
-        if (!listingId) {
-          setHeaders(response, 400);
-          response.end(JSON.stringify({ error: "Missing listingId query parameter" }));
-          return;
-        }
-        const success = await deleteProductListingInDB(listingId);
-        if (!success) {
-          setHeaders(response, 404);
-          response.end(JSON.stringify({ error: "ProductListing not found or could not be deleted" }));
-          return;
-        }
-        setHeaders(response, 200);
-        response.end(JSON.stringify({ success: true }));
-      } catch (error: any) {
-        setHeaders(response, 500);
-        response.end(JSON.stringify({ error: error.message }));
-      }
+    POST: async (ctx: Context) => {
+      const { listingId } = ctx.query as Record<string, string>;
+      if (!listingId)
+        return ctx.json(400, { error: "Missing listingId query parameter" });
+
+      const success = await deleteProductListingInDB(listingId);
+      if (!success)
+        return ctx.json(404, { error: "ProductListing not found or could not be deleted" });
+
+      await ctx.json(200, { success: true });
     }
   },
 
-  // --------- SellerProfile Routes ---------
+  /* ─────────────  SELLER PROFILE  ───────────── */
   "/db_sellerProfile_get": {
-    GET: async (request, response, cfg) => {
-      try {
-        const url = new URL(request.url!, `http://${request.headers.host}`);
-        const id = url.searchParams.get("sellerId");
-        if (!id) {
-          setHeaders(response, 400);
-          response.end(JSON.stringify({ error: "Missing id query parameter" }));
-          return;
-        }
-        const profile = await getSellerProfileFromDB(id);
-        if (!profile) {
-          setHeaders(response, 404);
-          response.end(JSON.stringify({ error: "SellerProfile not found" }));
-          return;
-        }
-        setHeaders(response, 200);
-        response.end(JSON.stringify(profile));
-      } catch (error: any) {
-        setHeaders(response, 500);
-        response.end(JSON.stringify({ error: error.message }));
-      }
+    GET: async (ctx: Context) => {
+      const { sellerId } = ctx.query as Record<string, string>;
+      if (!sellerId)
+        return ctx.json(400, { error: "Missing sellerId query parameter" });
+
+      const profile = await getSellerProfileFromDB(sellerId);
+      if (!profile)
+        return ctx.json(404, { error: "SellerProfile not found" });
+
+      await ctx.json(200, profile);
     }
   },
+
   "/db_sellerProfile_create": {
-    POST: async (request, response, cfg) => {
-      try {
-        const body = await getRequestBody(request);
-        const data = JSON.parse(body);
-        const newProfile = await createSellerProfileInDB(data);
-        setHeaders(response, 201);
-        response.end(JSON.stringify(newProfile));
-      } catch (error: any) {
-        setHeaders(response, 500);
-        response.end(JSON.stringify({ error: error.message }));
-      }
+    POST: async (ctx: Context) => {
+      const data = await ctx.body();
+      const newProfile = await createSellerProfileInDB(data);
+      await ctx.json(201, newProfile);
     }
   },
+
   "/db_sellerProfile_update": {
-    POST: async (request, response, cfg) => {
-      try {
-        const url = new URL(request.url!, `http://${request.headers.host}`);
-        const id = url.searchParams.get("sellerId");
-        if (!id) {
-          setHeaders(response, 400);
-          response.end(JSON.stringify({ error: "Missing id query parameter" }));
-          return;
-        }
-        const body = await getRequestBody(request);
-        const updates = JSON.parse(body);
-        const updatedProfile = await updateSellerProfileInDB(id, updates);
-        if (!updatedProfile) {
-          setHeaders(response, 404);
-          response.end(JSON.stringify({ error: "SellerProfile not found" }));
-          return;
-        }
-        setHeaders(response, 200);
-        response.end(JSON.stringify(updatedProfile));
-      } catch (error: any) {
-        setHeaders(response, 500);
-        response.end(JSON.stringify({ error: error.message }));
-      }
+    POST: async (ctx: Context) => {
+      const { sellerId } = ctx.query as Record<string, string>;
+      if (!sellerId)
+        return ctx.json(400, { error: "Missing sellerId query parameter" });
+
+      const updates = await ctx.body();
+      const updatedProfile = await updateSellerProfileInDB(sellerId, updates);
+      if (!updatedProfile)
+        return ctx.json(404, { error: "SellerProfile not found" });
+
+      await ctx.json(200, updatedProfile);
     }
   },
+
   "/db_sellerProfile_delete": {
-    POST: async (request, response, cfg) => {
-      try {
-        const url = new URL(request.url!, `http://${request.headers.host}`);
-        const id = url.searchParams.get("sellerId");
-        if (!id) {
-          setHeaders(response, 400);
-          response.end(JSON.stringify({ error: "Missing id query parameter" }));
-          return;
-        }
-        const success = await deleteSellerProfileInDB(id);
-        if (!success) {
-          setHeaders(response, 404);
-          response.end(JSON.stringify({ error: "SellerProfile not found or could not be deleted" }));
-          return;
-        }
-        setHeaders(response, 200);
-        response.end(JSON.stringify({ success: true }));
-      } catch (error: any) {
-        setHeaders(response, 500);
-        response.end(JSON.stringify({ error: error.message }));
-      }
+    POST: async (ctx: Context) => {
+      const { sellerId } = ctx.query as Record<string, string>;
+      if (!sellerId)
+        return ctx.json(400, { error: "Missing sellerId query parameter" });
+
+      const success = await deleteSellerProfileInDB(sellerId);
+      if (!success)
+        return ctx.json(404, { error: "SellerProfile not found or could not be deleted" });
+
+      await ctx.json(200, { success: true });
     }
   },
 
-  // --------- UserProfile Routes ---------
+  /* ─────────────  USER PROFILE  ───────────── */
   "/db_userProfile_get": {
-    GET: async (request, response, cfg) => {
-      try {
-        const url = new URL(request.url!, `http://${request.headers.host}`);
-        const id = url.searchParams.get("userId");
-        if (!id) {
-          setHeaders(response, 400);
-          response.end(JSON.stringify({ error: "Missing id query parameter" }));
-          return;
-        }
-        const user = await getUserProfileFromDB(id);
-        if (!user) {
-          setHeaders(response, 404);
-          response.end(JSON.stringify({ error: "UserProfile not found" }));
-          return;
-        }
-        setHeaders(response, 200);
-        response.end(JSON.stringify(user));
-      } catch (error: any) {
-        setHeaders(response, 500);
-        response.end(JSON.stringify({ error: error.message }));
-      }
+    GET: async (ctx: Context) => {
+      const { userId } = ctx.query as Record<string, string>;
+      if (!userId)
+        return ctx.json(400, { error: "Missing userId query parameter" });
+
+      const user = await getUserProfileFromDB(userId);
+      if (!user)
+        return ctx.json(404, { error: "UserProfile not found" });
+
+      await ctx.json(200, user);
     }
   },
+
   "/db_userProfile_create": {
-    POST: async (request, response, cfg) => {
-      try {
-        const body = await getRequestBody(request);
-        const data = JSON.parse(body);
-        const newUser = await createUserProfileInDB(data);
-        setHeaders(response, 201);
-        response.end(JSON.stringify(newUser));
-      } catch (error: any) {
-        setHeaders(response, 500);
-        response.end(JSON.stringify({ error: error.message }));
-      }
+    POST: async (ctx: Context) => {
+      const data = await ctx.body();
+      const newUser = await createUserProfileInDB(data);
+      await ctx.json(201, newUser);
     }
   },
+
   "/db_userProfile_update": {
-    POST: async (request, response, cfg) => {
-      try {
-        const url = new URL(request.url!, `http://${request.headers.host}`);
-        const id = url.searchParams.get("userId");
-        if (!id) {
-          setHeaders(response, 400);
-          response.end(JSON.stringify({ error: "Missing id query parameter" }));
-          return;
-        }
-        const body = await getRequestBody(request);
-        const updates = JSON.parse(body);
-        const updatedUser = await updateUserProfileInDB(id, updates);
-        if (!updatedUser) {
-          setHeaders(response, 404);
-          response.end(JSON.stringify({ error: "UserProfile not found" }));
-          return;
-        }
-        setHeaders(response, 200);
-        response.end(JSON.stringify(updatedUser));
-      } catch (error: any) {
-        setHeaders(response, 500);
-        response.end(JSON.stringify({ error: error.message }));
-      }
+    POST: async (ctx: Context) => {
+      const { userId } = ctx.query as Record<string, string>;
+      if (!userId)
+        return ctx.json(400, { error: "Missing userId query parameter" });
+
+      const updates = await ctx.body();
+      const updatedUser = await updateUserProfileInDB(userId, updates);
+      if (!updatedUser)
+        return ctx.json(404, { error: "UserProfile not found" });
+
+      await ctx.json(200, updatedUser);
     }
   },
+
   "/db_userProfile_delete": {
-    POST: async (request, response, cfg) => {
-      try {
-        const url = new URL(request.url!, `http://${request.headers.host}`);
-        const id = url.searchParams.get("userId");
-        if (!id) {
-          setHeaders(response, 400);
-          response.end(JSON.stringify({ error: "Missing id query parameter" }));
-          return;
-        }
-        const success = await deleteUserProfileInDB(id);
-        if (!success) {
-          setHeaders(response, 404);
-          response.end(JSON.stringify({ error: "UserProfile not found or could not be deleted" }));
-          return;
-        }
-        setHeaders(response, 200);
-        response.end(JSON.stringify({ success: true }));
-      } catch (error: any) {
-        setHeaders(response, 500);
-        response.end(JSON.stringify({ error: error.message }));
-      }
+    POST: async (ctx: Context) => {
+      const { userId } = ctx.query as Record<string, string>;
+      if (!userId)
+        return ctx.json(400, { error: "Missing userId query parameter" });
+
+      const success = await deleteUserProfileInDB(userId);
+      if (!success)
+        return ctx.json(404, { error: "UserProfile not found or could not be deleted" });
+
+      await ctx.json(200, { success: true });
     }
   },
 
-  // --------- Order Routes ---------
-  // NOTE: This collection is optional; Braintree stores detailed transaction/order info.
+  /* ─────────────  ORDER (optional)  ───────────── */
   "/db_order_get": {
-    GET: async (request, response, cfg) => {
-      try {
-        const url = new URL(request.url!, `http://${request.headers.host}`);
-        const orderId = url.searchParams.get("orderId");
-        if (!orderId) {
-          setHeaders(response, 400);
-          response.end(JSON.stringify({ error: "Missing orderId query parameter" }));
-          return;
-        }
-        const order = await getOrderFromDB(orderId);
-        if (!order) {
-          setHeaders(response, 404);
-          response.end(JSON.stringify({ error: "Order not found" }));
-          return;
-        }
-        setHeaders(response, 200);
-        response.end(JSON.stringify(order));
-      } catch (err: any) {
-        setHeaders(response, 500);
-        response.end(JSON.stringify({ error: err.message }));
-      }
-    }
-  },
-  "/db_order_create": {
-    POST: async (request, response, cfg) => {
-      try {
-        const body = await getRequestBody(request);
-        const data = JSON.parse(body);
-        const newOrder = await createOrderInDB(data);
-        setHeaders(response, 201);
-        response.end(JSON.stringify(newOrder));
-      } catch (err: any) {
-        setHeaders(response, 500);
-        response.end(JSON.stringify({ error: err.message }));
-      }
-    }
-  },
-  "/db_order_update": {
-    POST: async (request, response, cfg) => {
-      try {
-        const url = new URL(request.url!, `http://${request.headers.host}`);
-        const orderId = url.searchParams.get("orderId");
-        if (!orderId) {
-          setHeaders(response, 400);
-          response.end(JSON.stringify({ error: "Missing orderId query parameter" }));
-          return;
-        }
-        const body = await getRequestBody(request);
-        const updates = JSON.parse(body);
-        const updatedOrder = await updateOrderInDB(orderId, updates);
-        if (!updatedOrder) {
-          setHeaders(response, 404);
-          response.end(JSON.stringify({ error: "Order not found" }));
-          return;
-        }
-        setHeaders(response, 200);
-        response.end(JSON.stringify(updatedOrder));
-      } catch (err: any) {
-        setHeaders(response, 500);
-        response.end(JSON.stringify({ error: err.message }));
-      }
-    }
-  },
-  "/db_order_delete": {
-    POST: async (request, response, cfg) => {
-      try {
-        const url = new URL(request.url!, `http://${request.headers.host}`);
-        const orderId = url.searchParams.get("orderId");
-        if (!orderId) {
-          setHeaders(response, 400);
-          response.end(JSON.stringify({ error: "Missing orderId query parameter" }));
-          return;
-        }
-        const success = await deleteOrderInDB(orderId);
-        if (!success) {
-          setHeaders(response, 404);
-          response.end(JSON.stringify({ error: "Order not found or could not be deleted" }));
-          return;
-        }
-        setHeaders(response, 200);
-        response.end(JSON.stringify({ success: true }));
-      } catch (err: any) {
-        setHeaders(response, 500);
-        response.end(JSON.stringify({ error: err.message }));
-      }
-    }
-  },
-  "/db_order_list": {
-    GET: async (request, response, cfg) => {
-      try {
-        const orders = await listOrdersInDB();
-        setHeaders(response, 200);
-        response.end(JSON.stringify({ orders }));
-      } catch (err: any) {
-        setHeaders(response, 500);
-        response.end(JSON.stringify({ error: err.message }));
-      }
+    GET: async (ctx: Context) => {
+      const { orderId } = ctx.query as Record<string, string>;
+      if (!orderId)
+        return ctx.json(400, { error: "Missing orderId query parameter" });
+
+      const order = await getOrderFromDB(orderId);
+      if (!order)
+        return ctx.json(404, { error: "Order not found" });
+
+      await ctx.json(200, order);
     }
   },
 
-  // --------- Ticket Routes ---------
+  "/db_order_create": {
+    POST: async (ctx: Context) => {
+      const data = await ctx.body();
+      const newOrder = await createOrderInDB(data);
+      await ctx.json(201, newOrder);
+    }
+  },
+
+  "/db_order_update": {
+    POST: async (ctx: Context) => {
+      const { orderId } = ctx.query as Record<string, string>;
+      if (!orderId)
+        return ctx.json(400, { error: "Missing orderId query parameter" });
+
+      const updates = await ctx.body();
+      const updatedOrder = await updateOrderInDB(orderId, updates);
+      if (!updatedOrder)
+        return ctx.json(404, { error: "Order not found" });
+
+      await ctx.json(200, updatedOrder);
+    }
+  },
+
+  "/db_order_delete": {
+    POST: async (ctx: Context) => {
+      const { orderId } = ctx.query as Record<string, string>;
+      if (!orderId)
+        return ctx.json(400, { error: "Missing orderId query parameter" });
+
+      const success = await deleteOrderInDB(orderId);
+      if (!success)
+        return ctx.json(404, { error: "Order not found or could not be deleted" });
+
+      await ctx.json(200, { success: true });
+    }
+  },
+
+  "/db_order_list": {
+    GET: async (ctx: Context) => {
+      const orders = await listOrdersInDB();
+      await ctx.json(200, { orders });
+    }
+  },
+
+  /* ─────────────  TICKETS  ───────────── */
   "/db_ticket_get": {
-    GET: async (request, response, cfg) => {
-      try {
-        const url = new URL(request.url!, `http://${request.headers.host}`);
-        const ticketId = url.searchParams.get("ticketId");
-        if (!ticketId) {
-          setHeaders(response, 400);
-          response.end(JSON.stringify({ error: "Missing ticketId query parameter" }));
-          return;
-        }
-        const ticket = await getTicketFromDB(ticketId);
-        if (!ticket) {
-          setHeaders(response, 404);
-          response.end(JSON.stringify({ error: "Ticket not found" }));
-          return;
-        }
-        setHeaders(response, 200);
-        response.end(JSON.stringify(ticket));
-      } catch (err: any) {
-        setHeaders(response, 500);
-        response.end(JSON.stringify({ error: err.message }));
-      }
+    GET: async (ctx: Context) => {
+      const { ticketId } = ctx.query as Record<string, string>;
+      if (!ticketId)
+        return ctx.json(400, { error: "Missing ticketId query parameter" });
+
+      const ticket = await getTicketFromDB(ticketId);
+      if (!ticket)
+        return ctx.json(404, { error: "Ticket not found" });
+
+      await ctx.json(200, ticket);
     }
   },
+
   "/db_ticket_create": {
-    POST: async (request, response, cfg) => {
-      try {
-        const body = await getRequestBody(request);
-        const data = JSON.parse(body);
-        const newTicket = await createTicketInDB(data);
-        setHeaders(response, 201);
-        response.end(JSON.stringify(newTicket));
-      } catch (err: any) {
-        setHeaders(response, 500);
-        response.end(JSON.stringify({ error: err.message }));
-      }
+    POST: async (ctx: Context) => {
+      const data = await ctx.body();
+      const newTicket = await createTicketInDB(data);
+      await ctx.json(201, newTicket);
     }
   },
+
   "/db_ticket_update": {
-    POST: async (request, response, cfg) => {
-      try {
-        const url = new URL(request.url!, `http://${request.headers.host}`);
-        const ticketId = url.searchParams.get("ticketId");
-        if (!ticketId) {
-          setHeaders(response, 400);
-          response.end(JSON.stringify({ error: "Missing ticketId query parameter" }));
-          return;
-        }
-        const body = await getRequestBody(request);
-        const updates = JSON.parse(body);
-        const updatedTicket = await updateTicketInDB(ticketId, updates);
-        if (!updatedTicket) {
-          setHeaders(response, 404);
-          response.end(JSON.stringify({ error: "Ticket not found" }));
-          return;
-        }
-        setHeaders(response, 200);
-        response.end(JSON.stringify(updatedTicket));
-      } catch (err: any) {
-        setHeaders(response, 500);
-        response.end(JSON.stringify({ error: err.message }));
-      }
+    POST: async (ctx: Context) => {
+      const { ticketId } = ctx.query as Record<string, string>;
+      if (!ticketId)
+        return ctx.json(400, { error: "Missing ticketId query parameter" });
+
+      const updates = await ctx.body();
+      const updatedTicket = await updateTicketInDB(ticketId, updates);
+      if (!updatedTicket)
+        return ctx.json(404, { error: "Ticket not found" });
+
+      await ctx.json(200, updatedTicket);
     }
   },
+
   "/db_ticket_delete": {
-    POST: async (request, response, cfg) => {
-      try {
-        const url = new URL(request.url!, `http://${request.headers.host}`);
-        const ticketId = url.searchParams.get("ticketId");
-        if (!ticketId) {
-          setHeaders(response, 400);
-          response.end(JSON.stringify({ error: "Missing ticketId query parameter" }));
-          return;
-        }
-        const success = await deleteTicketInDB(ticketId);
-        if (!success) {
-          setHeaders(response, 404);
-          response.end(JSON.stringify({ error: "Ticket not found or could not be deleted" }));
-          return;
-        }
-        setHeaders(response, 200);
-        response.end(JSON.stringify({ success: true }));
-      } catch (err: any) {
-        setHeaders(response, 500);
-        response.end(JSON.stringify({ error: err.message }));
-      }
+    POST: async (ctx: Context) => {
+      const { ticketId } = ctx.query as Record<string, string>;
+      if (!ticketId)
+        return ctx.json(400, { error: "Missing ticketId query parameter" });
+
+      const success = await deleteTicketInDB(ticketId);
+      if (!success)
+        return ctx.json(404, { error: "Ticket not found or could not be deleted" });
+
+      await ctx.json(200, { success: true });
     }
   },
+
   "/db_ticket_list": {
-    GET: async (request, response, cfg) => {
-      try {
-        const tickets = await listTicketsInDB();
-        setHeaders(response, 200);
-        response.end(JSON.stringify({ tickets }));
-      } catch (err: any) {
-        setHeaders(response, 500);
-        response.end(JSON.stringify({ error: err.message }));
-      }
+    GET: async (ctx: Context) => {
+      const tickets = await listTicketsInDB();
+      await ctx.json(200, { tickets });
     }
   }
 };

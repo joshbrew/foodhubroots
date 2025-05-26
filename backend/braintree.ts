@@ -1,7 +1,7 @@
 import fs from 'fs';
 import querystring from 'querystring';
 import braintree from 'braintree';
-import { getRequestBody, Routes, setHeaders } from './util';
+import { Context, getRequestBody, Routes } from './util';
 import { 
   AddressResponse, DisputeResponse, CustomerResponse, TransactionResponse,
   SubscriptionResponse, DiscountResponse, CreditCardResponse, VenmoAccountResponse, 
@@ -555,441 +555,300 @@ export async function getSubscription(subscriptionId: string): Promise<braintree
    Each endpoint maps to a specific CRUD operation using GET, POST, PUT, or DELETE.
 */
 export const braintreeRoutes: Routes = {
-  /**
-   * GET /client-token  
-   * Returns a generated client token for Braintree operations.
-   */
+  /* ─────────────  CLIENT TOKEN  ───────────── */
   "/client-token": {
-    GET: async (request, response, cfg) => {
+    GET: async (ctx: Context) => {
       try {
         const token = await generateClientToken();
-        setHeaders(response, 200);
-        response.end(JSON.stringify({ clientToken: token }));
-      } catch (err: any) {
-        setHeaders(response, 500);
-        response.end(JSON.stringify({ error: 'Failed to generate client token' }));
+        await ctx.json(200, { clientToken: token });
+      } catch {
+        await ctx.json(500, { error: "Failed to generate client token" });
       }
     }
   },
 
-  /**
-   * POST /transaction  
-   * Retrieves a transaction by its transactionId.
-   */
+  /* ─────────────  TRANSACTION LOOK-UP  ───────────── */
   "/transaction": {
-    POST: async (request, response, cfg) => {
+    POST: async (ctx: Context) => {
       try {
-        const body = await getRequestBody(request);
-        const { transactionId } = JSON.parse(body);
+        const { transactionId } = await ctx.body();
         const transaction = await findTransaction(transactionId);
-        setHeaders(response, 200);
-        response.end(JSON.stringify({ transaction }));
-      } catch (err: any) {
-        setHeaders(response, 404);
-        response.end(JSON.stringify({ error: 'Transaction not found' }));
+        await ctx.json(200, { transaction });
+      } catch {
+        await ctx.json(404, { error: "Transaction not found" });
       }
     }
   },
 
-  /**
-   * POST /checkout  
-   * Processes a sale transaction (checkout) for a customer.
-   */
+  /* ─────────────  CHECKOUT  ───────────── */
   "/checkout": {
-    POST: async (request, response, cfg) => {
+    POST: async (ctx: Context) => {
       try {
-        const body = await getRequestBody(request);
-        const { customerId, amount } = JSON.parse(body);
+        const { customerId, amount } = await ctx.body();
         const transactionId = await processCheckout(customerId, amount);
-        setHeaders(response, 200);
-        response.end(JSON.stringify({ success: true, transactionId }));
+        await ctx.json(200, { success: true, transactionId });
       } catch (err: any) {
-        setHeaders(response, 500);
-        response.end(JSON.stringify({ error: err.message || 'Checkout failed' }));
+        await ctx.json(500, { error: err.message || "Checkout failed" });
       }
     }
   },
 
-  /**
-   * POST /create-customer  
-   * Creates a new customer using provided data.
-   */
+  /* ─────────────  CUSTOMER CRUD  ───────────── */
   "/create-customer": {
-    POST: async (request, response, cfg) => {
+    POST: async (ctx: Context) => {
       try {
-        const body = await getRequestBody(request);
-        const data: CustomerCreateRequest = JSON.parse(body);
+        const data = await ctx.body();          // CustomerCreateRequest shape
         const customerId = await createCustomer(data);
-        setHeaders(response, 200);
-        response.end(JSON.stringify({ success: true, customerId }));
+        await ctx.json(200, { success: true, customerId });
       } catch (err: any) {
-        setHeaders(response, 500);
-        response.end(JSON.stringify({ error: err.message || 'Failed to create customer' }));
+        await ctx.json(500, { error: err.message || "Failed to create customer" });
       }
     }
   },
 
-  /**
-   * POST /get-customer  
-   * Retrieves a customer by customerId.
-   */
   "/get-customer": {
-    POST: async (request, response, cfg) => {
+    POST: async (ctx: Context) => {
       try {
-        const body = await getRequestBody(request);
-        const { customerId } = JSON.parse(body);
+        const { customerId } = await ctx.body();
         const customer = await getCustomer(customerId);
-        setHeaders(response, 200);
-        response.end(JSON.stringify({ customer }));
-      } catch (err: any) {
-        setHeaders(response, 404);
-        response.end(JSON.stringify({ error: 'Customer not found' }));
+        await ctx.json(200, { customer });
+      } catch {
+        await ctx.json(404, { error: "Customer not found" });
       }
     }
   },
 
-  /**
-   * POST /update-customer  
-   * Updates customer details.
-   */
   "/update-customer": {
-    POST: async (request, response, cfg) => {
+    POST: async (ctx: Context) => {
       try {
-        const body = await getRequestBody(request);
-        const { customerId, firstName, lastName, email, address, city, state, zip, country } = JSON.parse(body);
+        const {
+          customerId, firstName, lastName, email,
+          address, city, state, zip, country
+        } = await ctx.body();
         await updateCustomer({ customerId, firstName, lastName, email, address, city, state, zip, country });
-        setHeaders(response, 200);
-        response.end(JSON.stringify({ success: true }));
+        await ctx.json(200, { success: true });
       } catch (err: any) {
-        setHeaders(response, 500);
-        response.end(JSON.stringify({ error: err.message || 'Failed to update customer' }));
+        await ctx.json(500, { error: err.message || "Failed to update customer" });
       }
     }
   },
 
-  /**
-   * POST /create-submerchant  
-   * Creates a new submerchant account.
-   */
+  "/delete-customer": {
+    POST: async (ctx: Context) => {
+      try {
+        const { customerId } = await ctx.body();
+        await deleteCustomer(customerId);
+        await ctx.json(200, { success: true });
+      } catch (err: any) {
+        await ctx.json(500, { error: err.message || "Failed to delete customer" });
+      }
+    }
+  },
+
+  /* ─────────────  SUB-MERCHANTS  ───────────── */
   "/create-submerchant": {
-    POST: async (request, response, cfg) => {
+    POST: async (ctx: Context) => {
       try {
-        const body = await getRequestBody(request);
-        const data = JSON.parse(body);
+        const data = await ctx.body();
         const subMerchantAccount = await createSubmerchant(data);
-        setHeaders(response, 200);
-        response.end(JSON.stringify({ success: true, subMerchantAccount }));
+        await ctx.json(200, { success: true, subMerchantAccount });
       } catch (err: any) {
-        setHeaders(response, 500);
-        response.end(JSON.stringify({ error: err.message || 'Failed to create submerchant' }));
+        await ctx.json(500, { error: err.message || "Failed to create submerchant" });
       }
     }
   },
 
-  /**
-   * POST /split-transaction  
-   * Processes a split transaction and returns earnings details.
-   */
-  "/split-transaction": {
-    POST: async (request, response, cfg) => {
-      try {
-        const body = await getRequestBody(request);
-        const { subMerchantAccountId, amount, nonce, customerId } = JSON.parse(body);
-        const result = await splitTransaction({ subMerchantAccountId, amount, nonce, customerId });
-        setHeaders(response, 200);
-        response.end(JSON.stringify(result));
-      } catch (err: any) {
-        setHeaders(response, 500);
-        response.end(JSON.stringify({ error: err.message || 'Failed to process split transaction' }));
-      }
-    }
-  },
-
-  /**
-   * GET /transactions  
-   * Retrieves all transactions.
-   */
-  "/transactions": {
-    GET: async (request, response, cfg) => {
-      try {
-        const transactions = await getTransactions();
-        setHeaders(response, 200);
-        response.end(JSON.stringify({ transactions }));
-      } catch (err: any) {
-        setHeaders(response, 500);
-        response.end(JSON.stringify({ error: 'Failed to fetch transactions' }));
-      }
-    }
-  },
-
-  /**
-   * GET /customers  
-   * Retrieves all customers.
-   */
-  "/customers": {
-    GET: async (request, response, cfg) => {
-      try {
-        const customers = await getAllCustomers();
-        setHeaders(response, 200);
-        response.end(JSON.stringify({ customers }));
-      } catch (err: any) {
-        setHeaders(response, 500);
-        response.end(JSON.stringify({ error: 'Failed to fetch customers' }));
-      }
-    }
-  },
-
-  /**
-   * POST /get-submerchant  
-   * Retrieves a submerchant account by merchantAccountId.
-   */
   "/get-submerchant": {
-    POST: async (request, response, cfg) => {
+    POST: async (ctx: Context) => {
       try {
-        const body = await getRequestBody(request);
-        const { merchantAccountId } = JSON.parse(body);
+        const { merchantAccountId } = await ctx.body();
         const subMerchant = await getSubmerchant(merchantAccountId);
-        setHeaders(response, 200);
-        response.end(JSON.stringify({ subMerchant }));
-      } catch (err: any) {
-        setHeaders(response, 404);
-        response.end(JSON.stringify({ error: 'Submerchant not found' }));
+        await ctx.json(200, { subMerchant });
+      } catch {
+        await ctx.json(404, { error: "Submerchant not found" });
       }
     }
   },
 
-  /**
-   * GET /submerchants  
-   * Retrieves all approved submerchant accounts from a file.
-   */
   "/submerchants": {
-    GET: async (request, response, cfg) => {
+    GET: async (ctx: Context) => {
       try {
         const submerchants = await getSubmerchantsFromFile();
-        setHeaders(response, 200);
-        response.end(JSON.stringify({ submerchants }));
-      } catch (err: any) {
-        setHeaders(response, 500);
-        response.end(JSON.stringify({ error: 'Failed to fetch submerchants' }));
+        await ctx.json(200, { submerchants });
+      } catch {
+        await ctx.json(500, { error: "Failed to fetch submerchants" });
       }
     }
   },
 
-  /**
-   * POST /webhook  
-   * Processes incoming webhook notifications from Braintree.
-   */
-  "/webhook": {
-    POST: async (request, response, cfg) => {
+  /* ─────────────  SPLIT-PAYMENT / TRANSACTIONS  ───────────── */
+  "/split-transaction": {
+    POST: async (ctx: Context) => {
       try {
-        const body = await getRequestBody(request);
-        const parsedBody = querystring.parse(body);
-        const btSignature = parsedBody.bt_signature as string;
-        const btPayload = parsedBody.bt_payload as string;
+        const { subMerchantAccountId, amount, nonce, customerId } = await ctx.body();
+        const result = await splitTransaction({ subMerchantAccountId, amount, nonce, customerId });
+        await ctx.json(200, result);
+      } catch (err: any) {
+        await ctx.json(500, { error: err.message || "Failed to process split transaction" });
+      }
+    }
+  },
+
+  "/transactions": {
+    GET: async (ctx: Context) => {
+      try {
+        const transactions = await getTransactions();
+        await ctx.json(200, { transactions });
+      } catch {
+        await ctx.json(500, { error: "Failed to fetch transactions" });
+      }
+    }
+  },
+
+  "/customers": {
+    GET: async (ctx: Context) => {
+      try {
+        const customers = await getAllCustomers();
+        await ctx.json(200, { customers });
+      } catch {
+        await ctx.json(500, { error: "Failed to fetch customers" });
+      }
+    }
+  },
+
+  /* ─────────────  REFUND / VOID  ───────────── */
+  "/refund": {
+    POST: async (ctx: Context) => {
+      try {
+        const { transactionId, amount } = await ctx.body();
+        const refundId = await refundTransaction(transactionId, amount);
+        await ctx.json(200, { success: true, refundId });
+      } catch (err: any) {
+        await ctx.json(500, { error: err.message || "Refund failed" });
+      }
+    }
+  },
+
+  "/void-transaction": {
+    POST: async (ctx: Context) => {
+      try {
+        const { transactionId } = await ctx.body();
+        const voidId = await voidTransaction(transactionId);
+        await ctx.json(200, { success: true, voidId });
+      } catch (err: any) {
+        await ctx.json(500, { error: err.message || "Void transaction failed" });
+      }
+    }
+  },
+
+  /* ─────────────  PAYMENT METHODS  ───────────── */
+  "/create-payment-method": {
+    POST: async (ctx: Context) => {
+      try {
+        const { customerId, paymentMethodNonce, makeDefault } = await ctx.body();
+        const token = await createPaymentMethod({ customerId, paymentMethodNonce, makeDefault });
+        await ctx.json(200, { success: true, token });
+      } catch (err: any) {
+        await ctx.json(500, { error: err.message || "Failed to create payment method" });
+      }
+    }
+  },
+
+  "/update-payment-method": {
+    POST: async (ctx: Context) => {
+      try {
+        const { token, cardholderName, expirationDate } = await ctx.body();
+        await updatePaymentMethod(token, { cardholderName, expirationDate });
+        await ctx.json(200, { success: true });
+      } catch (err: any) {
+        await ctx.json(500, { error: err.message || "Failed to update payment method" });
+      }
+    }
+  },
+
+  "/delete-payment-method": {
+    POST: async (ctx: Context) => {
+      try {
+        const { token } = await ctx.body();
+        await deletePaymentMethod(token);
+        await ctx.json(200, { success: true });
+      } catch (err: any) {
+        await ctx.json(500, { error: err.message || "Failed to delete payment method" });
+      }
+    }
+  },
+
+  /* ─────────────  SUBSCRIPTIONS  ───────────── */
+  "/create-subscription": {
+    POST: async (ctx: Context) => {
+      try {
+        const { paymentMethodToken, planId, price } = await ctx.body();
+        const subscriptionId = await createSubscription({ paymentMethodToken, planId, price });
+        await ctx.json(200, { success: true, subscriptionId });
+      } catch (err: any) {
+        await ctx.json(500, { error: err.message || "Failed to create subscription" });
+      }
+    }
+  },
+
+  "/cancel-subscription": {
+    POST: async (ctx: Context) => {
+      try {
+        const { subscriptionId } = await ctx.body();
+        await cancelSubscription(subscriptionId);
+        await ctx.json(200, { success: true });
+      } catch (err: any) {
+        await ctx.json(500, { error: err.message || "Failed to cancel subscription" });
+      }
+    }
+  },
+
+  "/get-subscription": {
+    POST: async (ctx: Context) => {
+      try {
+        const { subscriptionId } = await ctx.body();
+        const subscription = await getSubscription(subscriptionId);
+        await ctx.json(200, { subscription });
+      } catch {
+        await ctx.json(404, { error: "Subscription not found" });
+      }
+    }
+  },
+
+  /* ─────────────  BRAINTREE WEBHOOK  ───────────── */
+  "/webhook": {
+    POST: async (ctx: Context) => {
+      try {
+        // Braintree sends URL-encoded payload, so read raw:
+        const raw = await getRequestBody(ctx.req);
+        const parsed = querystring.parse(raw);
+        const btSignature = parsed.bt_signature as string;
+        const btPayload   = parsed.bt_payload as string;
         const webhookNotification = await processWebhook(btSignature, btPayload);
 
-        // Additional handling based on webhook kind:
+        // handle certain webhook kinds
         switch (webhookNotification.kind) {
-          // @ts-ignore
+          // @ts-ignore -- depends on braintree types version
           case braintree.WebhookNotification.Kind.SubMerchantAccountApproved:
-            fs.appendFile('approved_submerchants.txt', webhookNotification.merchantAccount.id + "\n", (err) => {
-              if (err) console.error('Error writing approved submerchant:', err);
-            });
+            fs.appendFileSync("approved_submerchants.txt", webhookNotification.merchantAccount.id + "\n");
             break;
           // @ts-ignore
           case braintree.WebhookNotification.Kind.TransactionSettled:
           // @ts-ignore
           case braintree.WebhookNotification.Kind.TransactionDisbursed:
-            fs.appendFile('successful_transactions.txt', webhookNotification.transaction.id + "\n", (err) => {
-              if (err) console.error('Error writing successful transaction:', err);
-            });
+            fs.appendFileSync("successful_transactions.txt", webhookNotification.transaction.id + "\n");
             break;
           // @ts-ignore
           case braintree.WebhookNotification.Kind.TransactionSettlementDeclined:
-            fs.appendFile('declined_transactions.txt', webhookNotification.transaction.id + "\n", (err) => {
-              if (err) console.error('Error writing declined transaction:', err);
-            });
+            fs.appendFileSync("declined_transactions.txt", webhookNotification.transaction.id + "\n");
             break;
           default:
-            console.log('Received webhook notification of kind:', webhookNotification.kind);
+            console.log("Received webhook notification of kind:", webhookNotification.kind);
         }
 
-        setHeaders(response, 200);
-        response.end(JSON.stringify({ received: true }));
-      } catch (err: any) {
-        setHeaders(response, 500);
-        response.end(JSON.stringify({ error: 'Failed to process webhook' }));
-      }
-    }
-  },
-
-  /**
-   * POST /refund  
-   * Refunds a transaction.
-   */
-  "/refund": {
-    POST: async (request, response, cfg) => {
-      try {
-        const body = await getRequestBody(request);
-        const { transactionId, amount } = JSON.parse(body);
-        const refundId = await refundTransaction(transactionId, amount);
-        setHeaders(response, 200);
-        response.end(JSON.stringify({ success: true, refundId }));
-      } catch (err: any) {
-        setHeaders(response, 500);
-        response.end(JSON.stringify({ error: err.message || 'Refund failed' }));
-      }
-    }
-  },
-
-  /**
-   * POST /void-transaction  
-   * Voids a transaction.
-   */
-  "/void-transaction": {
-    POST: async (request, response, cfg) => {
-      try {
-        const body = await getRequestBody(request);
-        const { transactionId } = JSON.parse(body);
-        const voidId = await voidTransaction(transactionId);
-        setHeaders(response, 200);
-        response.end(JSON.stringify({ success: true, voidId }));
-      } catch (err: any) {
-        setHeaders(response, 500);
-        response.end(JSON.stringify({ error: err.message || 'Void transaction failed' }));
-      }
-    }
-  },
-
-  /**
-   * POST /delete-customer  
-   * Deletes a customer.
-   */
-  "/delete-customer": {
-    POST: async (request, response, cfg) => {
-      try {
-        const body = await getRequestBody(request);
-        const { customerId } = JSON.parse(body);
-        await deleteCustomer(customerId);
-        setHeaders(response, 200);
-        response.end(JSON.stringify({ success: true }));
-      } catch (err: any) {
-        setHeaders(response, 500);
-        response.end(JSON.stringify({ error: err.message || 'Failed to delete customer' }));
-      }
-    }
-  },
-
-  /**
-   * POST /create-payment-method  
-   * Creates a new payment method for a customer.
-   */
-  "/create-payment-method": {
-    POST: async (request, response, cfg) => {
-      try {
-        const body = await getRequestBody(request);
-        const { customerId, paymentMethodNonce, makeDefault } = JSON.parse(body);
-        const token = await createPaymentMethod({ customerId, paymentMethodNonce, makeDefault });
-        setHeaders(response, 200);
-        response.end(JSON.stringify({ success: true, token }));
-      } catch (err: any) {
-        setHeaders(response, 500);
-        response.end(JSON.stringify({ error: err.message || 'Failed to create payment method' }));
-      }
-    }
-  },
-
-  /**
-   * POST /update-payment-method  
-   * Updates a payment method.
-   */
-  "/update-payment-method": {
-    POST: async (request, response, cfg) => {
-      try {
-        const body = await getRequestBody(request);
-        const { token, cardholderName, expirationDate } = JSON.parse(body);
-        await updatePaymentMethod(token, { cardholderName, expirationDate });
-        setHeaders(response, 200);
-        response.end(JSON.stringify({ success: true }));
-      } catch (err: any) {
-        setHeaders(response, 500);
-        response.end(JSON.stringify({ error: err.message || 'Failed to update payment method' }));
-      }
-    }
-  },
-
-  /**
-   * POST /delete-payment-method  
-   * Deletes a payment method.
-   */
-  "/delete-payment-method": {
-    POST: async (request, response, cfg) => {
-      try {
-        const body = await getRequestBody(request);
-        const { token } = JSON.parse(body);
-        await deletePaymentMethod(token);
-        setHeaders(response, 200);
-        response.end(JSON.stringify({ success: true }));
-      } catch (err: any) {
-        setHeaders(response, 500);
-        response.end(JSON.stringify({ error: err.message || 'Failed to delete payment method' }));
-      }
-    }
-  },
-
-  /**
-   * POST /create-subscription  
-   * Creates a subscription for a customer.
-   */
-  "/create-subscription": {
-    POST: async (request, response, cfg) => {
-      try {
-        const body = await getRequestBody(request);
-        const { paymentMethodToken, planId, price } = JSON.parse(body);
-        const subscriptionId = await createSubscription({ paymentMethodToken, planId, price });
-        setHeaders(response, 200);
-        response.end(JSON.stringify({ success: true, subscriptionId }));
-      } catch (err: any) {
-        setHeaders(response, 500);
-        response.end(JSON.stringify({ error: err.message || 'Failed to create subscription' }));
-      }
-    }
-  },
-
-  /**
-   * POST /cancel-subscription  
-   * Cancels a subscription.
-   */
-  "/cancel-subscription": {
-    POST: async (request, response, cfg) => {
-      try {
-        const body = await getRequestBody(request);
-        const { subscriptionId } = JSON.parse(body);
-        await cancelSubscription(subscriptionId);
-        setHeaders(response, 200);
-        response.end(JSON.stringify({ success: true }));
-      } catch (err: any) {
-        setHeaders(response, 500);
-        response.end(JSON.stringify({ error: err.message || 'Failed to cancel subscription' }));
-      }
-    }
-  },
-
-  /**
-   * POST /get-subscription  
-   * Retrieves a subscription by its ID.
-   */
-  "/get-subscription": {
-    POST: async (request, response, cfg) => {
-      try {
-        const body = await getRequestBody(request);
-        const { subscriptionId } = JSON.parse(body);
-        const subscription = await getSubscription(subscriptionId);
-        setHeaders(response, 200);
-        response.end(JSON.stringify({ subscription }));
-      } catch (err: any) {
-        setHeaders(response, 404);
-        response.end(JSON.stringify({ error: 'Subscription not found' }));
+        await ctx.json(200, { received: true });
+      } catch {
+        await ctx.json(500, { error: "Failed to process webhook" });
       }
     }
   }
