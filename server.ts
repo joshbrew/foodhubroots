@@ -47,10 +47,15 @@ const baseRoutes: Routes = {
       });
     }
   },
+  
+  // plain  /events     → device key resolved from query/cookie/UA
   '/events': {
-    GET: async ctx => {
-      await createSseSession(ctx.req, ctx.res as http.ServerResponse);
-    }
+    GET: async ctx => createSseSession(ctx.req, ctx.res, ctx.params)   // {}
+  },
+
+  // param  /events/:deviceId  → device key taken from the path first
+  '/events/:deviceId': {
+    GET: async ctx => createSseSession(ctx.req, ctx.res, ctx.params)   // { deviceId: 'abc' }
   }
 };
 
