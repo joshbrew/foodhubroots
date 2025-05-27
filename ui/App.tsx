@@ -1,9 +1,32 @@
-import React, { Component, FormEvent, ChangeEvent, MouseEvent  } from "react";
+import React, { Component, FormEvent, ChangeEvent, MouseEvent } from "react";
 import dropin from "braintree-web-drop-in";
 import { sComponent, state } from "./components/util/state.component";
 import { MerchantAccountResponse } from "../scripts/braintree_datastructures";
 
 const protocol = "https";
+
+let _tokenValue: string | null = null;
+let _tokenPromise: Promise<string> | null = null;
+
+
+export function obtainClientToken(): Promise<string> {
+  if (_tokenValue) return Promise.resolve(_tokenValue);   // cached
+  if (_tokenPromise) return _tokenPromise;                  // in-flight
+
+  _tokenPromise = fetch(`${protocol}://localhost:3000/client-token`)
+    .then(r => r.json())
+    .then(({ clientToken }) => {
+      _tokenValue = clientToken;     // cache for everyone else
+      _tokenPromise = null;
+      return clientToken;
+    });
+
+  return _tokenPromise;
+}
+/* helper to test “is this a promise?” */
+const isPromise = (x: any): x is Promise<any> =>
+  x && typeof x === "object" && typeof x.then === "function";
+
 
 //sComponents keep a persistent state, you can import "state" from state.component to manipulate/reference state more programatically, 
 // tying the system together in a simple manner. state can also to localStorage
@@ -25,7 +48,7 @@ export class App extends sComponent {
         <FindSubmerchant />
         <hr />
         <CreateCustomer />
-        <AddPaymentMethod/>
+        <AddPaymentMethod />
         <hr />
         <RegularCheckout />
         <hr />
@@ -39,151 +62,156 @@ export class App extends sComponent {
 }
 
 
-// ───────────────────────────────────────────────────────
-// 1) CreateCustomer Component
-// ───────────────────────────────────────────────────────
-
-interface CreateCustState {
-  firstName:      string;
-  lastName:       string;
-  email:          string;
-  company:        string;
-  phone:          string;
-  fax:            string;
-  website:        string;
-
-  clientToken:    string | null;
-  dropinInstance: any | null;
-  createdId:      string | null;
-  log:            string;
+/*────────────────────────────────────────────
+  Keys we WANT to broadcast to every sComponent
+────────────────────────────────────────────*/
+interface CustomerGlobalState {
+  clientToken: string | null | Promise<string>;  // fetched once, reused everywhere
+  currentCustomerId: string | null;  // “selected / just-created” customer
+  customerLog: string;         // unique log key for this feature
 }
 
-export class CreateCustomer extends Component<{}, CreateCustState> {
-  state: CreateCustState = {
-    firstName:      "",
-    lastName:       "",
-    email:          "",
-    company:        "",
-    phone:          "",
-    fax:            "",
-    website:        "",
-
-    clientToken:    null,
-    dropinInstance: null,
-    createdId:      null,
-    log:            ""
+/*────────────────────────────────────────────
+  Create Customer  –  shared bits in state,
+  everything else kept private on the class.
+────────────────────────────────────────────*/
+export class CreateCustomer extends sComponent<{}, CustomerGlobalState> {
+  /* shared */
+  state: CustomerGlobalState = {
+    clientToken: null,
+    currentCustomerId: null,
+    customerLog: ""
   };
 
-  async componentDidMount() {
-    try {
-      const res = await fetch(`${protocol}://localhost:3000/client-token`);
-      const { clientToken } = await res.json();
-      this.setState({ clientToken });
+  __doNotBroadcast = ['customerLog'];
 
-      dropin.create(
-        { authorization: clientToken, container: "#customer-dropin" },
-        (err, inst) => {
-          if (err) {
-            console.error(err);
-            this.setState({ log: "Drop-in failed to initialize." });
-            return;
-          }
-          this.setState({ dropinInstance: inst });
-        }
-      );
-    } catch (err: any) {
-      this.setState({ log: `Could not fetch client token: ${err.message}` });
+  /* local-only fields (no cross-component need) */
+  private dropinInstance: any | null = null;
+  private firstName = "";
+  private lastName = "";
+  private email = "";
+  private company = "";
+  private phone = "";
+  private fax = "";
+  private website = "";
+
+  /*──────── LIFECYCLE ────────*/
+  async componentDidMount() {
+    /* one & only fetch (deduped globally) */
+    try {
+      const token = await obtainClientToken();
+      this.setState({ clientToken: token });   // broadcast resolved string
+    } catch (e: any) {
+      this.setState({ customerLog: `Could not fetch client token: ${e.message}` });
     }
   }
 
-  handleChange = (e: ChangeEvent<HTMLInputElement>) => {
-    const { name, value } = e.target;
-    this.setState({ [name]: value } as any);
-  };
+  /* whenever clientToken becomes a real string, spin-up Drop-in */
+  componentDidUpdate(_: {}, prevState: CustomerGlobalState) {
+    if (
+      typeof this.state.clientToken === "string" &&
+      prevState.clientToken !== this.state.clientToken
+    ) {
+      this.initDropIn();
+    }
+  }
 
-  handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
+  componentWillUnmount() {
+    this.dropinInstance?.teardown?.();
+  }
+
+  /*──────── Drop-in ────────*/
+  private initDropIn() {
+    if (this.dropinInstance) return;
+    if (typeof this.state.clientToken !== "string") return;
+
+    dropin.create(
+      { authorization: this.state.clientToken, container: "#customer-dropin" },
+      (err, inst) => {
+        if (err) {
+          this.setState({ customerLog: "Drop-in failed to initialise." });
+        } else {
+          this.dropinInstance = inst;
+          this.forceUpdate();
+        }
+      }
+    );
+  }
+
+  /*──────── HANDLERS ────────*/
+  private handleText =
+    (key: any) =>
+      (e: ChangeEvent<HTMLInputElement>) => {
+        (this as any)[key] = e.target.value;
+        this.forceUpdate();
+      };
+
+  private handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
-    const form = e.currentTarget;
-    if (!form.checkValidity()) {
-      form.reportValidity();
-      return;
-    }
 
-    const {
-      dropinInstance,
-      firstName, lastName, email,
-      company, phone, fax, website
-    } = this.state;
+    if (!this.dropinInstance)
+      return this.setState({ customerLog: "Drop-in not ready." });
 
-    if (!dropinInstance) {
-      this.setState({ log: "Drop-in not ready." });
-      return;
-    }
-
-    this.setState({ log: "Creating customer…" });
+    this.setState({ customerLog: "Creating customer…" });
 
     try {
-      const { nonce } = await dropinInstance.requestPaymentMethod();
+      const { nonce } = await this.dropinInstance.requestPaymentMethod();
+
       const payload = {
-        firstName,
-        lastName,
-        email,
-        company,
-        phone,
-        fax,
-        website,
+        firstName: this.firstName,
+        lastName: this.lastName,
+        email: this.email,
+        company: this.company,
+        phone: this.phone,
+        fax: this.fax,
+        website: this.website,
         paymentMethodNonce: nonce
       };
 
-      const res = await fetch(`${protocol}://localhost:3000/create-customer`, {
+      const r = await fetch(`${protocol}://localhost:3000/create-customer`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload)
       });
+      const res = await r.json();
 
-      const data = await res.json();
-      if (data.success) {
-        this.setState({ createdId: data.customerId, log: "Customer created!" });
+      if (res.success) {
+        /* broadcast the freshly created customer ID */
+        this.setState({
+          currentCustomerId: res.customerId,
+          customerLog: "Customer created!"
+        });
       } else {
-        this.setState({ log: `Error: ${data.error}` });
+        this.setState({ customerLog: `Error: ${res.error}` });
       }
     } catch (err: any) {
-      this.setState({ log: `Network error: ${err.message}` });
+      this.setState({ customerLog: `Network error: ${err.message}` });
     }
   };
 
+  /*──────── RENDER ────────*/
   render() {
-    const {
-      firstName, lastName, email,
-      company, phone, fax, website,
-      createdId, log
-    } = this.state;
-
     return (
       <form onSubmit={this.handleSubmit} style={{ margin: 20 }}>
         <h2>Create Customer</h2>
 
         <label>
-          First Name:
+          First&nbsp;Name:
           <input
-            name="firstName"
-            type="text"
             required
-            value={firstName}
-            onChange={this.handleChange}
+            value={this.firstName}
+            onChange={this.handleText("firstName")}
             style={{ marginLeft: 8 }}
           />
         </label>
         <br />
 
         <label>
-          Last Name:
+          Last&nbsp;Name:
           <input
-            name="lastName"
-            type="text"
             required
-            value={lastName}
-            onChange={this.handleChange}
+            value={this.lastName}
+            onChange={this.handleText("lastName")}
             style={{ marginLeft: 8 }}
           />
         </label>
@@ -192,11 +220,10 @@ export class CreateCustomer extends Component<{}, CreateCustState> {
         <label>
           Email:
           <input
-            name="email"
             type="email"
             required
-            value={email}
-            onChange={this.handleChange}
+            value={this.email}
+            onChange={this.handleText("email")}
             style={{ marginLeft: 8 }}
           />
         </label>
@@ -205,10 +232,8 @@ export class CreateCustomer extends Component<{}, CreateCustState> {
         <label>
           Company:
           <input
-            name="company"
-            type="text"
-            value={company}
-            onChange={this.handleChange}
+            value={this.company}
+            onChange={this.handleText("company")}
             style={{ marginLeft: 8 }}
           />
         </label>
@@ -217,10 +242,8 @@ export class CreateCustomer extends Component<{}, CreateCustState> {
         <label>
           Phone:
           <input
-            name="phone"
-            type="tel"
-            value={phone}
-            onChange={this.handleChange}
+            value={this.phone}
+            onChange={this.handleText("phone")}
             style={{ marginLeft: 8 }}
           />
         </label>
@@ -229,10 +252,8 @@ export class CreateCustomer extends Component<{}, CreateCustState> {
         <label>
           Fax:
           <input
-            name="fax"
-            type="tel"
-            value={fax}
-            onChange={this.handleChange}
+            value={this.fax}
+            onChange={this.handleText("fax")}
             style={{ marginLeft: 8 }}
           />
         </label>
@@ -241,27 +262,30 @@ export class CreateCustomer extends Component<{}, CreateCustState> {
         <label>
           Website:
           <input
-            name="website"
             type="url"
-            value={website}
-            onChange={this.handleChange}
+            value={this.website}
+            onChange={this.handleText("website")}
             style={{ marginLeft: 8 }}
           />
         </label>
 
         <hr />
-
         <div id="customer-dropin" style={{ margin: "10px 0" }} />
 
-        <button type="submit">Create Customer</button>
+        <button type="submit" disabled={!this.dropinInstance}>
+          Create Customer
+        </button>
 
-        {createdId && (
+        {this.state.currentCustomerId && (
           <div style={{ marginTop: 12 }}>
-            Customer ID: <strong>{createdId}</strong>
+            Customer&nbsp;ID:&nbsp;
+            <strong>{this.state.currentCustomerId}</strong>
           </div>
         )}
-        {log && (
-          <div style={{ marginTop: 12, color: "red" }}>{log}</div>
+        {this.state.customerLog && (
+          <div style={{ marginTop: 12, color: "red" }}>
+            {this.state.customerLog}
+          </div>
         )}
       </form>
     );
@@ -271,459 +295,473 @@ export class CreateCustomer extends Component<{}, CreateCustState> {
 
 
 interface BillingAddress {
-  streetAddress:     string;
-  extendedAddress:   string;
-  locality:          string;
-  region:            string;
-  postalCode:        string;
+  streetAddress: string;
+  extendedAddress: string;
+  locality: string;
+  region: string;
+  postalCode: string;
   countryCodeAlpha2: string;
 }
 
-interface PaymentMethodState {
-  customerId:     string;
-  billingAddress: BillingAddress;
-  clientToken:    string | null;
-  dropinInstance: any | null;
-  token:          string | null;
-  log:            string;
+/*────────────────────────────────────────────
+  SHARED STATE  (anything you want visible
+  in every other sComponent goes in here)
+────────────────────────────────────────────*/
+interface PMGlobalState {
+  /** shared: fetched once – used by any Drop-in */
+  clientToken: string | null | Promise<string>;
+  /** shared: the customer we are currently working with */
+  currentCustomerId: string | null;
+
+  /** this key name is unique, so it will NOT collide with
+      another component’s log. (Every sComponent gets every
+      update, but unused keys are simply ignored.)            */
+  pmLog: string;
 }
 
-export class AddPaymentMethod extends Component<{}, PaymentMethodState> {
-  state: PaymentMethodState = {
-    customerId: "",
-    billingAddress: {
-      streetAddress: "",
-      extendedAddress: "",
-      locality: "",
-      region: "",
-      postalCode: "",
-      countryCodeAlpha2: ""
-    },
-    clientToken:    null,
-    dropinInstance: null,
-    token:          null,
-    log:            ""
+/*────────────────────────────────────────────
+  AddPaymentMethod  as an sComponent
+────────────────────────────────────────────*/
+export class AddPaymentMethod extends sComponent<{}, PMGlobalState> {
+  state: PMGlobalState = {
+    clientToken: null,
+    currentCustomerId: null,
+    pmLog: ""
   };
 
+  __doNotBroadcast = ['pmLog'];
+
+  /* local-only pieces that shouldn’t propagate */
+  private dropinInstance: any | null = null;
+  private newToken: string | null = null;
+  private billing: BillingAddress = {
+    streetAddress: "",
+    extendedAddress: "",
+    locality: "",
+    region: "",
+    postalCode: "",
+    countryCodeAlpha2: ""
+  };
+
+  /*──────── LIFECYCLE ────────*/
   async componentDidMount() {
     try {
-      const res = await fetch(`${protocol}://localhost:3000/client-token`);
-      const { clientToken } = await res.json();
-      this.setState({ clientToken });
-      dropin.create(
-        { authorization: clientToken, container: "#pm-dropin" },
-        (err, inst) => {
-          if (err) {
-            console.error(err);
-            this.setState({ log: "Drop-in init failed" });
-            return;
-          }
-          this.setState({ dropinInstance: inst });
-        }
-      );
-    } catch (err: any) {
-      this.setState({ log: `Token error: ${err.message}` });
+      const token = await obtainClientToken();
+      this.setState({ clientToken: token });
+    } catch (e: any) {
+      this.setState({ pmLog: `Token error: ${e.message}` });
     }
   }
 
-  handleChange = (
-    e: ChangeEvent<HTMLInputElement>
-  ) => {
-    const { name, value } = e.target;
-    // name will be either "customerId" or "billingAddress.field"
-    if (name === "customerId") {
-      this.setState({ customerId: value });
-    } else {
-      // billingAddress.foo
-      this.setState((prev) => {
-        const ba = { ...prev.billingAddress, [name.split(".")[1]]: value };
-        return { billingAddress: ba };
-      });
+  /* kick Drop-in once token is ready */
+  componentDidUpdate(_: {}, prev: PMGlobalState) {
+    if (
+      typeof this.state.clientToken === "string" &&
+      prev.clientToken !== this.state.clientToken
+    ) {
+      this.initDropIn();
     }
-  };
+  }
 
-  handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
+  componentWillUnmount() {
+    this.dropinInstance?.teardown?.();
+  }
+
+  /*──────── Drop-in ────────*/
+  private initDropIn() {
+    if (this.dropinInstance) return;
+    if (typeof this.state.clientToken !== "string") return;
+
+    dropin.create(
+      { authorization: this.state.clientToken, container: "#pm-dropin" },
+      (err, inst) => {
+        if (err) {
+          this.setState({ pmLog: "Drop-in init failed" });
+        } else {
+          this.dropinInstance = inst;
+          this.forceUpdate();
+        }
+      }
+    );
+  }
+
+  /*──────── HANDLERS ────────*/
+  private handleText =
+    (field: keyof BillingAddress | "currentCustomerId") =>
+      (e: ChangeEvent<HTMLInputElement>) => {
+        const value = e.target.value;
+        if (field === "currentCustomerId") {
+          /* broadcast customer selection */
+          this.setState({ currentCustomerId: value });
+        } else {
+          this.billing[field] = value;
+          this.forceUpdate();
+        }
+      };
+
+  private handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
-    const form = e.currentTarget;
-    if (!form.checkValidity()) {
-      form.reportValidity();
-      return;
-    }
+    if (!this.dropinInstance)
+      return this.setState({ pmLog: "Drop-in not ready." });
+    if (!this.state.currentCustomerId)
+      return this.setState({ pmLog: "Select / create a customer first." });
 
-    const { dropinInstance, customerId, billingAddress } = this.state;
-    if (!dropinInstance) {
-      this.setState({ log: "Drop-in not ready." });
-      return;
-    }
+    this.setState({ pmLog: "Vaulting payment method…" });
 
-    this.setState({ log: "Vaulting payment method…" });
     try {
-      const { nonce } = await dropinInstance.requestPaymentMethod();
+      const { nonce } = await this.dropinInstance.requestPaymentMethod();
       const res = await fetch(`${protocol}://localhost:3000/create-payment-method`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          customerId: customerId.trim(),
+          customerId: this.state.currentCustomerId,
           paymentMethodNonce: nonce,
-          billingAddress,     // <— include the address you collected
+          billingAddress: this.billing,
           options: { makeDefault: true }
         })
       });
       const data = await res.json();
       if (data.success) {
-        this.setState({ token: data.token, log: "Payment method created!" });
+        this.newToken = data.token;
+        this.setState({ pmLog: "Payment method created!" });
       } else {
-        this.setState({ log: `Error: ${data.error}` });
+        this.setState({ pmLog: `Error: ${data.error}` });
       }
     } catch (err: any) {
-      this.setState({ log: `Error: ${err.message}` });
+      this.setState({ pmLog: `Error: ${err.message}` });
     }
   };
 
+  /*──────── RENDER ────────*/
   render() {
-    const { customerId, billingAddress, token, log } = this.state;
+    const { currentCustomerId, pmLog } = this.state;
+    const B = this.billing;   // shorthand
+
     return (
       <form onSubmit={this.handleSubmit} style={{ margin: 20 }}>
         <h2>Add Payment Method</h2>
 
         <label>
-          Customer ID:
+          Customer&nbsp;ID:
           <input
-            name="customerId"
-            type="text"
+            name="currentCustomerId"
             required
-            value={customerId}
-            onChange={this.handleChange}
+            value={currentCustomerId || ""}
+            onChange={this.handleText("currentCustomerId")}
             style={{ marginLeft: 8 }}
           />
         </label>
 
         <hr />
-
         <div id="pm-dropin" style={{ margin: "10px 0" }} />
 
         <h3>Billing Address</h3>
-        <label>
-          Street:
-          <input
-            name="billingAddress.streetAddress"
-            type="text"
-            required
-            value={billingAddress.streetAddress}
-            onChange={this.handleChange}
-            style={{ marginLeft: 8, width: 300 }}
-          />
-        </label>
-        <br/>
-        <label>
-          Extended:
-          <input
-            name="billingAddress.extendedAddress"
-            type="text"
-            value={billingAddress.extendedAddress}
-            onChange={this.handleChange}
-            style={{ marginLeft: 8, width: 300 }}
-          />
-        </label>
-        <br/>
-        <label>
-          City:
-          <input
-            name="billingAddress.locality"
-            type="text"
-            required
-            value={billingAddress.locality}
-            onChange={this.handleChange}
-            style={{ marginLeft: 8 }}
-          />
-        </label>
-        <label style={{ marginLeft: 16 }}>
-          Region:
-          <input
-            name="billingAddress.region"
-            type="text"
-            required
-            value={billingAddress.region}
-            onChange={this.handleChange}
-            style={{ marginLeft: 8, width: 60 }}
-          />
-        </label>
-        <label style={{ marginLeft: 16 }}>
-          Postal:
-          <input
-            name="billingAddress.postalCode"
-            type="text"
-            required
-            value={billingAddress.postalCode}
-            onChange={this.handleChange}
-            style={{ marginLeft: 8, width: 80 }}
-          />
-        </label>
-        <br/>
-        <label>
-          Country (2-letter):
-          <input
-            name="billingAddress.countryCodeAlpha2"
-            type="text"
-            required
-            maxLength={2}
-            value={billingAddress.countryCodeAlpha2}
-            onChange={this.handleChange}
-            style={{ marginLeft: 8, width: 40 }}
-          />
-        </label>
+        <input
+          placeholder="Street"
+          required
+          value={B.streetAddress}
+          onChange={this.handleText("streetAddress")}
+          style={{ width: 280 }}
+        />
+        <br />
+        <input
+          placeholder="Extended"
+          value={B.extendedAddress}
+          onChange={this.handleText("extendedAddress")}
+          style={{ width: 280 }}
+        />
+        <br />
+        <input
+          placeholder="City"
+          required
+          value={B.locality}
+          onChange={this.handleText("locality")}
+        />
+        <input
+          placeholder="Region"
+          required
+          value={B.region}
+          onChange={this.handleText("region")}
+          style={{ marginLeft: 8, width: 60 }}
+        />
+        <input
+          placeholder="Postal"
+          required
+          value={B.postalCode}
+          onChange={this.handleText("postalCode")}
+          style={{ marginLeft: 8, width: 80 }}
+        />
+        <br />
+        <input
+          placeholder="Country (α-2)"
+          required
+          maxLength={2}
+          value={B.countryCodeAlpha2}
+          onChange={this.handleText("countryCodeAlpha2")}
+          style={{ width: 48 }}
+        />
 
         <hr />
-        <button type="submit">Vault Payment Method</button>
+        <button type="submit" disabled={!this.dropinInstance}>
+          Vault Payment Method
+        </button>
 
-        {token && (
+        {this.newToken && (
           <div style={{ marginTop: 12 }}>
-            New Token: <strong>{token}</strong>
+            New Token:&nbsp;<strong>{this.newToken}</strong>
           </div>
         )}
-        {log && (
-          <div style={{ marginTop: 12, color: "red" }}>{log}</div>
-        )}
+        {pmLog && <div style={{ marginTop: 12, color: "red" }}>{pmLog}</div>}
       </form>
     );
   }
 }
 
-// -------------------------------------------------------------------
-// 2. Regular Checkout Component (as an sComponent)
-// -------------------------------------------------------------------
-export class RegularCheckout extends sComponent {
-  state = {
-    createdCustomerId: "",
+interface CheckoutState {
+  /* ❶  shared across components */
+  currentCustomerId: string | null;
+
+  /* ❷  local-only (don’t broadcast) */
+  amount: string;
+  log: string;
+}
+
+export class RegularCheckout extends sComponent<{}, CheckoutState> {
+  /** mark keys that should stay local to this component */
+  __doNotBroadcast = ["amount", "log"];
+
+  state: CheckoutState = {
+    currentCustomerId: null,   // will hydrate from global state if present
     amount: "10.00",
-    log: "",
+    log: ""
   };
 
-  constructor(props: any) {
-    super(props);
-  }
+  /*──────── helpers ────────*/
+  private handleCheckout = async () => {
+    const { currentCustomerId, amount } = this.state;
 
-  handleCheckout = async () => {
-    if (!this.state.createdCustomerId) {
-      this.setState({ log: "No customer has been created yet." });
-      return;
+    if (!currentCustomerId) {
+      return this.setState({ log: "Select or create a customer first." });
     }
 
     try {
-      const response = await fetch(protocol + "://localhost:3000/checkout", {
+      const r = await fetch(`${protocol}://localhost:3000/checkout`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          customerId: this.state.createdCustomerId,
-          amount: this.state.amount,
-        }),
+        body: JSON.stringify({ customerId: currentCustomerId, amount })
       });
+      const res = await r.json();
 
-      const data = await response.json();
-      if (data.success) {
-        this.setState({ log: `Checkout successful! Transaction ID: ${data.transactionId}` });
+      if (res.success) {
+        this.setState({ log: `✅  Success – Txn ID: ${res.transactionId}` });
       } else {
-        this.setState({ log: `Error in checkout: ${data.error}` });
+        this.setState({ log: `❌  ${res.error || "Checkout failed"}` });
       }
-    } catch (err: any) {
-      console.error("Error in checkout:", err);
-      this.setState({ log: `Error in checkout: ${err.message}` });
+    } catch (e: any) {
+      this.setState({ log: `❌  Network error: ${e.message}` });
     }
   };
 
+  /*──────── render ────────*/
   render() {
+    const { currentCustomerId, amount, log } = this.state;
+
     return (
-      <div style={{ margin: "10px 0" }}>
+      <div style={{ margin: 20 }}>
         <h2>Regular Checkout</h2>
+
         <p>
-          Created Customer ID:{" "}
-          <strong>{this.state.createdCustomerId || "Not yet created"}</strong>
+          Current&nbsp;Customer&nbsp;ID:&nbsp;
+          <strong>{currentCustomerId ?? "— none —"}</strong>
         </p>
-        <label>Amount:</label>
-        <input
-          type="text"
-          value={this.state.amount}
-          onChange={(e) => this.setState({ amount: e.target.value })}
-          style={{ marginRight: "10px" }}
-        />
+
+        <label>
+          Amount:&nbsp;
+          <input
+            value={amount}
+            onChange={e => this.setState({ amount: e.target.value })}
+            style={{ width: 100, marginRight: 8 }}
+          />
+        </label>
+
         <button onClick={this.handleCheckout}>Checkout</button>
-        <div>{this.state.log}</div>
+
+        {log && (
+          <div style={{ marginTop: 12, color: log.startsWith("✅") ? "green" : "red" }}>
+            {log}
+          </div>
+        )}
       </div>
     );
   }
 }
 
 
-
 interface AddressState {
   streetAddress: string;
-  locality:      string;
-  region:        string;
-  postalCode:    string;
+  locality: string;
+  region: string;
+  postalCode: string;
 }
 
 interface IndividualState {
-  firstName:   string;
-  lastName:    string;
-  email:       string;
-  phone:       string;
+  firstName: string;
+  lastName: string;
+  email: string;
+  phone: string;
   dateOfBirth: string;  // YYYY-MM-DD
-  ssn:         string;  // last4
-  address:     AddressState;
+  ssn: string;  // last4
+  address: AddressState;
 }
 
 interface BusinessState {
   legalName: string;
-  dbaName:   string;
-  taxId:     string;
-  address:   AddressState;
+  dbaName: string;
+  taxId: string;
+  address: AddressState;
 }
 
 interface FundingState {
-  descriptor:    string;
-  destination:   "bank" | "mobile";
-  email:         string;
-  mobilePhone:   string;
+  descriptor: string;
+  destination: "bank" | "mobile";
+  email: string;
+  mobilePhone: string;
   accountNumber: string;
   routingNumber: string;
 }
 
-interface SubMerchant {
-  id:             string;
-  idExists:       boolean | null;
-  tosAccepted:    boolean;
-  individual:     IndividualState;
-  useBusiness:    boolean;
-  business:       BusinessState;
-  funding:        FundingState;
+interface SMState {
+  /* ─── shared ─── */
+  currentSubMerchantId: string;   // published globally
+
+  /* ─── local-only ─── */
+  id: string;
+  idExists: boolean | null;
+  tosAccepted: boolean;
+  individual: IndividualState;
+  useBusiness: boolean;
+  business: BusinessState;
+  funding: FundingState;
   createdAccount: any;
-  log:            string;
+  uiLog: string;
 }
 
-export class CreateSubMerchant extends Component<{}, SubMerchant> {
-  state: SubMerchant = {
+export class CreateSubMerchant extends sComponent<{}, SMState> {
+  /* Tell the EventHandler which keys NOT to announce to every component */
+  __doNotSubscribe = [
+    "id", "idExists", "tosAccepted",
+    "individual", "useBusiness", "business", "funding",
+    "createdAccount", "uiLog"
+  ];
+
+  /* --------------------------------------------------------------------- */
+  state: SMState = {
+    /* shared */
+    currentSubMerchantId: "",
+
+    /* local-only defaults (not broadcast) */
     id: "",
     idExists: null,
     tosAccepted: false,
     individual: {
-      firstName:   "",
-      lastName:    "",
-      email:       "",
-      phone:       "",
-      dateOfBirth: "",
-      ssn:         "",
-      address: {
-        streetAddress: "",
-        locality:      "",
-        region:        "",
-        postalCode:    ""
-      }
+      firstName: "", lastName: "", email: "", phone: "",
+      dateOfBirth: "", ssn: "",
+      address: { streetAddress: "", locality: "", region: "", postalCode: "" }
     },
     useBusiness: false,
     business: {
-      legalName: "",
-      dbaName:   "",
-      taxId:     "",
-      address: {
-        streetAddress: "",
-        locality:      "",
-        region:        "",
-        postalCode:    ""
-      }
+      legalName: "", dbaName: "", taxId: "",
+      address: { streetAddress: "", locality: "", region: "", postalCode: "" }
     },
     funding: {
-      descriptor:    "",
-      destination:   "bank",
-      email:         "",
-      mobilePhone:   "",
-      accountNumber: "",
-      routingNumber: ""
+      descriptor: "", destination: "bank",
+      email: "", mobilePhone: "", accountNumber: "", routingNumber: ""
     },
     createdAccount: null,
-    log: ""
+    uiLog: ""
   };
 
-  // handles both inputs & selects & checkboxes by name path
+  /* --------------------------------------------------------------------- */
+  /** Generic field handler – supports nested names like "funding.email" */
   handleInputChange = (
-    e: ChangeEvent<HTMLInputElement | HTMLSelectElement>
+    e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>
   ) => {
     const { name, type, value, checked } = e.currentTarget as any;
     const val = type === "checkbox" ? checked : value;
-    this.setState((prev) => {
-      // deep clone prev
-      const next: any = JSON.parse(JSON.stringify(prev));
-      let cur = next as any;
+    this.setState(prev => {
+      const next: any = structuredClone(prev);
+      let ref = next as any;
       const parts = name.split(".");
-      for (let i = 0; i < parts.length - 1; i++) {
-        cur = cur[parts[i]];
-      }
-      cur[parts[parts.length - 1]] = val;
+      for (let i = 0; i < parts.length - 1; i++) ref = ref[parts[i]];
+      ref[parts.at(-1)!] = val;
       return next;
     });
   };
 
-  checkId = async (e: MouseEvent) => {
+  /* --------------------------------------------------------------------- */
+  checkId = async (e: React.MouseEvent) => {
     e.preventDefault();
     const { id } = this.state;
     if (!id.trim()) {
-      this.setState({ idExists: null, log: "Please enter an ID first." });
+      this.setState({ uiLog: "Enter an ID first", idExists: null });
       return;
     }
     try {
-      const res = await fetch(`${protocol}://localhost:3000/get-submerchant`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ merchantAccountId: id.trim() })
+      const r = await fetch(
+        `${protocol}://localhost:3000/get-submerchant`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ merchantAccountId: id.trim() })
+        }
+      );
+      this.setState({
+        idExists: r.ok,
+        uiLog: r.ok ? `ID "${id}" already exists.` : `ID "${id}" is available.`
       });
-      if (res.ok) {
-        this.setState({ idExists: true, log: `ID "${id}" already exists.` });
-      } else {
-        this.setState({ idExists: false, log: `ID "${id}" is available.` });
-      }
     } catch (err: any) {
-      this.setState({ idExists: false, log: `Lookup error: ${err.message}` });
+      this.setState({ idExists: false, uiLog: `Lookup error: ${err.message}` });
     }
   };
 
-  handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
+  /* --------------------------------------------------------------------- */
+  handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const form = e.currentTarget;
-    if (!form.checkValidity()) {
-      form.reportValidity();
-      return;
-    }
+    if (!form.checkValidity()) { form.reportValidity(); return; }
 
-    const {
-      id,
-      tosAccepted,
-      individual,
-      useBusiness,
-      business,
-      funding
-    } = this.state;
-    this.setState({ log: "Creating sub-merchant..." });
+    const { id, tosAccepted, individual, useBusiness, business, funding } =
+      this.state;
 
     const payload: any = { individual, funding, tosAccepted };
     if (id.trim()) payload.id = id.trim();
     if (useBusiness) payload.business = business;
 
+    /* optimistic UI */
+    this.setState({ uiLog: "Creating sub-merchant…" });
     try {
-      const res = await fetch(`${protocol}://localhost:3000/create-submerchant`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload)
-      });
+      const res = await fetch(
+        `${protocol}://localhost:3000/create-submerchant`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload)
+        }
+      );
       const data = await res.json();
-      if (data.success && data.subMerchantAccount) {
+      if (res.ok && data.success && data.subMerchantAccount) {
+        /* success – publish the new ID globally, keep everything else local */
+        const newId = data.subMerchantAccount.id;
         this.setState({
+          currentSubMerchantId: newId,
           createdAccount: data.subMerchantAccount,
-          log: "Sub-merchant created successfully!"
+          uiLog: "Sub-merchant created!"
         });
       } else {
-        this.setState({ log: `Error: ${data.error}` });
+        this.setState({ uiLog: `Error: ${data.error || "Unknown error"}` });
       }
     } catch (err: any) {
-      this.setState({ log: `Fetch error: ${err.message}` });
+      this.setState({ uiLog: `Network error: ${err.message}` });
     }
   };
 
@@ -737,7 +775,7 @@ export class CreateSubMerchant extends Component<{}, SubMerchant> {
       business,
       funding,
       createdAccount,
-      log
+      uiLog
     } = this.state;
 
     return (
@@ -1016,7 +1054,7 @@ export class CreateSubMerchant extends Component<{}, SubMerchant> {
           Create Sub-Merchant
         </button>
 
-        {log && <div style={{ marginTop: 12, color: "red" }}>{log}</div>}
+        {uiLog && <div style={{ marginTop: 12, color: "red" }}>{uiLog}</div>}
 
         {createdAccount && (
           <pre
@@ -1037,74 +1075,95 @@ export class CreateSubMerchant extends Component<{}, SubMerchant> {
     );
   }
 }
-// -------------------------------------------------------------------
-// 4. Transaction with Split Component (as an sComponent)
-// -------------------------------------------------------------------
-export class TransactionWithSplit extends sComponent {
-  state = {
-    subMerchantId: "",
-    createdCustomerId: "",
+/*────────────────────────────────────────────
+  TransactionWithSplit – sComponent version
+────────────────────────────────────────────*/
+
+interface SplitState {
+  /* ❶ shared across components */
+  currentCustomerId: string | null;
+  currentSubMerchantId: string | null;
+
+  /* ❷ local-only */
+  splitAmount: string;
+  txnLog: string;
+}
+
+export class TransactionWithSplit extends sComponent<{}, SplitState> {
+  /** don’t broadcast these two keys */
+  __doNotBroadcast = ["splitAmount", "txnLog"];
+
+  state: SplitState = {
+    currentCustomerId: null,  // auto-hydrates from EventHandler.data
+    currentSubMerchantId: null,
     splitAmount: "50.00",
-    log: "",
+    txnLog: ""
   };
 
-  constructor(props: any) {
-    super(props);
-  }
+  /*──────── helpers ────────*/
+  private submitSplit = async () => {
+    const { currentCustomerId, currentSubMerchantId, splitAmount } = this.state;
 
-  handleTransactionWithSplit = async () => {
-    if (!this.state.subMerchantId) {
-      this.setState({ log: "No sub-merchant has been created yet." });
-      return;
+    if (!currentSubMerchantId) {
+      return this.setState({ txnLog: "Select or create a sub-merchant first." });
     }
-    if (!this.state.createdCustomerId) {
-      this.setState({ log: "No customer has been created yet." });
-      return;
+    if (!currentCustomerId) {
+      return this.setState({ txnLog: "Select or create a customer first." });
     }
+
+    this.setState({ txnLog: "Processing…" });
 
     try {
-      const response = await fetch(protocol + "://localhost:3000/split-transaction", {
+      const r = await fetch(`${protocol}://localhost:3000/split-transaction`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          subMerchantAccountId: this.state.subMerchantId,
-          customerId: this.state.createdCustomerId,
-          amount: this.state.splitAmount,
-        }),
+          subMerchantAccountId: currentSubMerchantId,
+          customerId: currentCustomerId,
+          amount: splitAmount
+        })
       });
+      const res = await r.json();
 
-      const data = await response.json();
-      if (data.success) {
-        this.setState({ log: `Transaction with split successful! Transaction ID: ${data.transactionId}` });
+      if (res.success) {
+        this.setState({ txnLog: `✅  Success – Txn ID: ${res.transactionId}` });
       } else {
-        this.setState({ log: `Error in split transaction: ${data.error}` });
+        this.setState({ txnLog: `❌  ${res.error || "Split failed"}` });
       }
-    } catch (err: any) {
-      console.error("Error in split transaction:", err);
-      this.setState({ log: `Error in split transaction: ${err.message}` });
+    } catch (e: any) {
+      this.setState({ txnLog: `❌  Network error: ${e.message}` });
     }
   };
 
+  /*──────── render ────────*/
   render() {
+    const { currentSubMerchantId, currentCustomerId, splitAmount, txnLog } = this.state;
+
     return (
-      <div style={{ margin: "10px 0" }}>
-        <h2>Transaction with 98/2 Split</h2>
+      <div style={{ margin: 20 }}>
+        <h2>Transaction with 98 / 2 Split</h2>
+
         <p>
-          This simulates charging the existing customer while sending 98% to the
-          sub-merchant and 2% to your master account.
+          Customer&nbsp;ID:&nbsp;<strong>{currentCustomerId ?? "— none —"}</strong><br />
+          Sub-Merchant&nbsp;ID:&nbsp;<strong>{currentSubMerchantId ?? "— none —"}</strong>
         </p>
-        <p>
-          Sub-Merchant ID: <strong>{this.state.subMerchantId || "Not yet created"}</strong>
-        </p>
-        <label>Split Transaction Amount:</label>
-        <input
-          type="text"
-          value={this.state.splitAmount}
-          onChange={(e) => this.setState({ splitAmount: e.target.value })}
-          style={{ marginRight: "10px" }}
-        />
-        <button onClick={this.handleTransactionWithSplit}>Pay Sub-Merchant (98%)</button>
-        <div>{this.state.log}</div>
+
+        <label>
+          Amount:&nbsp;
+          <input
+            value={splitAmount}
+            onChange={e => this.setState({ splitAmount: e.target.value })}
+            style={{ width: 100, marginRight: 8 }}
+          />
+        </label>
+
+        <button onClick={this.submitSplit}>Pay Sub-Merchant&nbsp;(98%)</button>
+
+        {txnLog && (
+          <div style={{ marginTop: 12, color: txnLog.startsWith("✅") ? "green" : "red" }}>
+            {txnLog}
+          </div>
+        )}
       </div>
     );
   }
