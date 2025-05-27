@@ -108,6 +108,7 @@ async function staticServe(req: http.IncomingMessage, res: http.ServerResponse, 
 
 // ─── Primary request handler ──────────────────────────────────────────
 function onRequest(req: http.IncomingMessage, res: http.ServerResponse, cfg: ServerConfig) {
+  console.log("REQUEST: ", req.url);
   httpHandler(req, res, () => staticServe(req, res, cfg), routesConfig);
 }
 

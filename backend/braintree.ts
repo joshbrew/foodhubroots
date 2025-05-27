@@ -2,9 +2,10 @@ import fs from 'fs';
 import querystring from 'querystring';
 import braintree from 'braintree';
 import { Context, getRequestBody, Routes } from './util';
-import { 
+import { parse } from 'url';
+import {
   AddressResponse, DisputeResponse, CustomerResponse, TransactionResponse,
-  SubscriptionResponse, DiscountResponse, CreditCardResponse, VenmoAccountResponse, 
+  SubscriptionResponse, DiscountResponse, CreditCardResponse, VenmoAccountResponse,
   UsBankAccountResponse, MerchantAccountResponse, SepaDebitAccountResponse, VisaCheckoutCardResponse,
   UsBankAccountVerificationResponse, ClientTokenRequest, CustomerCreateRequest,
   CreditCardCreateRequest, CreditCardVerificationRequest, SubMerchantAccountWebhookNotification
@@ -270,64 +271,106 @@ export async function splitTransaction(params: {
   };
 }
 
-/**
- * Retrieves all transactions (filtered by creation date).
- *
- * @returns A Promise resolving to an array of TransactionResponse objects.
- *
- * **HTTP Mapping:**  
- * GET `/transactions`
- */
-export async function getTransactions(): Promise<TransactionResponse[]> {
+
+import { Readable } from "stream";
+
+export interface TransactionQuery {
+  startDate?: string;         // ISO date string
+  endDate?: string;           // ISO date string
+  status?: keyof typeof braintree.Transaction.Status;
+  customerId?: string;
+}
+
+export async function getTransactions(
+  filters: TransactionQuery = {}
+): Promise<TransactionResponse[]> {
+  const transactions: TransactionResponse[] = [];
+
+  // start a stream of matching TransactionResponse
+  const stream: Readable = btGateway.transaction.search((search) => {
+    // if user passed absolutely no filters, default to “created before now”
+    if (
+      !filters.startDate &&
+      !filters.endDate &&
+      !filters.status &&
+      !filters.customerId
+    ) {
+      search.createdAt().max(new Date());
+    }
+
+    if (filters.startDate) {
+      search.createdAt().min(new Date(filters.startDate));
+    }
+    if (filters.endDate) {
+      search.createdAt().max(new Date(filters.endDate));
+    }
+    if (filters.status) {
+      search
+        .status()
+        .is(braintree.Transaction.Status[filters.status] as any);
+    }
+    if (filters.customerId) {
+      search.customerId().is(filters.customerId);
+    }
+  });
+
   return new Promise<TransactionResponse[]>((resolve, reject) => {
-    const result: TransactionResponse[] = [];
-    btGateway.transaction.search(
-      (search) => {
-        search.createdAt().min(new Date(2000, 0, 1));
-      },
-      // @ts-ignore
-      (err: any, collection: any) => {
-        console.log(collection);
-        if (err) return reject(err);
-        collection.each((err: any, transaction: TransactionResponse) => {
-          console.log(transaction);
-          if (err) return reject(err);
-          result.push(transaction);
-        }, () => resolve(result));
-      }
-    );
-
+    stream.on("data", (txn: TransactionResponse) => transactions.push(txn));
+    stream.on("end", () => resolve(transactions));
+    stream.on("error", (err) => reject(err));
   });
 }
 
-/**
- * Retrieves all customers.
- *
- * @returns A Promise resolving to an array of CustomerResponse objects.
- *
- * **HTTP Mapping:**  
- * GET `/customers`
- */
-export async function getAllCustomers(): Promise<CustomerResponse[]> {
+export interface CustomerQuery {
+  email?: string;
+  firstName?: string;
+  lastName?: string;
+  createdAfter?: string;
+  createdBefore?: string;
+}
+
+export async function getAllCustomers(
+  filters: CustomerQuery = {}
+): Promise<CustomerResponse[]> {
+  const customers: CustomerResponse[] = [];
+
+  // start a stream of matching CustomerResponse
+  const stream: Readable = btGateway.customer.search((search) => {
+    // default to “created before now” if no filters at all
+    if (
+      !filters.email &&
+      !filters.firstName &&
+      !filters.lastName &&
+      !filters.createdAfter &&
+      !filters.createdBefore
+    ) {
+      search.createdAt().max(new Date());
+    }
+
+    if (filters.email) {
+      search.email().is(filters.email);
+    }
+    if (filters.firstName) {
+      search.firstName().startsWith(filters.firstName);
+    }
+    if (filters.lastName) {
+      search.lastName().startsWith(filters.lastName);
+    }
+    if (filters.createdAfter) {
+      search.createdAt().min(new Date(filters.createdAfter));
+    }
+    if (filters.createdBefore) {
+      search.createdAt().max(new Date(filters.createdBefore));
+    }
+  });
+
   return new Promise<CustomerResponse[]>((resolve, reject) => {
-    const result: CustomerResponse[] = [];
-    btGateway.customer.search(
-      (search) => {
-        // No predicates—returns all customers.
-      },
-      // @ts-ignore
-      (err: any, collection: any) => {
-        console.log(collection);
-        if (err) return reject(err);
-        collection.each((err: any, customer: CustomerResponse) => {
-          console.log(customer);
-          if (err) return reject(err);
-          result.push(customer);
-        }, () => resolve(result));
-      }
-    );
+    stream.on("data", (cust: CustomerResponse) => customers.push(cust));
+    stream.on("end", () => resolve(customers));
+    stream.on("error", (err) => reject(err));
   });
 }
+
 
 /**
  * Retrieves a submerchant account by its merchantAccountId.
@@ -380,13 +423,13 @@ export async function getSubmerchantsFromFile(): Promise<(braintree.MerchantAcco
  */
 export async function processWebhook(btSignature: string, btPayload: string): Promise<SubMerchantAccountWebhookNotification | any> {
   return new Promise((resolve, reject) => {
-    btGateway.webhookNotification.parse(btSignature, btPayload, 
+    btGateway.webhookNotification.parse(btSignature, btPayload,
       // @ts-ignore
       (err, webhookNotification) => {
-      if (err) return reject(err);
-      // Additional processing (e.g., logging to a file) can be done here.
-      resolve(webhookNotification);
-    });
+        if (err) return reject(err);
+        // Additional processing (e.g., logging to a file) can be done here.
+        resolve(webhookNotification);
+      });
   });
 }
 
@@ -567,6 +610,48 @@ export const braintreeRoutes: Routes = {
     }
   },
 
+
+  "/transactions": {
+    GET: async (ctx: Context) => {
+      try {
+        const { query } = parse(ctx.req.url || '', true);
+        // parse all string params straight off the URL:
+        const filters: TransactionQuery = {
+          startDate: typeof query.startDate === 'string' ? query.startDate : undefined,
+          endDate: typeof query.endDate === 'string' ? query.endDate : undefined,
+          status: typeof query.status === 'string' ? query.status : undefined as any,
+          customerId: typeof query.customerId === 'string' ? query.customerId : undefined
+        };
+        const transactions = await getTransactions(filters);
+        console.log("TRANSACTION QUERY:", transactions);
+        await ctx.json(200, { transactions });
+      } catch (err: any) {
+        await ctx.json(500, { error: err.message || 'Failed to fetch transactions' });
+      }
+    }
+  },
+
+  "/customers": {
+    GET: async (ctx: Context) => {
+      console.log("CALLED /customers")
+      try {
+        const { query } = parse(ctx.req.url || '', true);
+        const filters: CustomerQuery = {
+          email: typeof query.email === 'string' ? query.email : undefined,
+          firstName: typeof query.firstName === 'string' ? query.firstName : undefined,
+          lastName: typeof query.lastName === 'string' ? query.lastName : undefined,
+          createdAfter: typeof query.createdAfter === 'string' ? query.createdAfter : undefined,
+          createdBefore: typeof query.createdBefore === 'string' ? query.createdBefore : undefined
+        };
+        const customers = await getAllCustomers(filters);
+        console.log("CUSTOMER QUERY:", customers);
+        await ctx.json(200, { customers });
+      } catch (err: any) {
+        await ctx.json(500, { error: err.message || 'Failed to fetch customers' });
+      }
+    }
+  },
+
   /* ─────────────  TRANSACTION LOOK-UP  ───────────── */
   "/transaction": {
     POST: async (ctx: Context) => {
@@ -694,28 +779,6 @@ export const braintreeRoutes: Routes = {
     }
   },
 
-  "/transactions": {
-    GET: async (ctx: Context) => {
-      try {
-        const transactions = await getTransactions();
-        await ctx.json(200, { transactions });
-      } catch {
-        await ctx.json(500, { error: "Failed to fetch transactions" });
-      }
-    }
-  },
-
-  "/customers": {
-    GET: async (ctx: Context) => {
-      try {
-        const customers = await getAllCustomers();
-        await ctx.json(200, { customers });
-      } catch {
-        await ctx.json(500, { error: "Failed to fetch customers" });
-      }
-    }
-  },
-
   /* ─────────────  REFUND / VOID  ───────────── */
   "/refund": {
     POST: async (ctx: Context) => {
@@ -823,7 +886,7 @@ export const braintreeRoutes: Routes = {
         const raw = await getRequestBody(ctx.req);
         const parsed = querystring.parse(raw);
         const btSignature = parsed.bt_signature as string;
-        const btPayload   = parsed.bt_payload as string;
+        const btPayload = parsed.bt_payload as string;
         const webhookNotification = await processWebhook(btSignature, btPayload);
 
         // handle certain webhook kinds

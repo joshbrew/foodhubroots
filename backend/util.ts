@@ -414,43 +414,52 @@ export function pushToDevice(
     sess.push(JSON.stringify(data), eventName, eventId);
 }
 
-// --- Route finder ---
-export function findRoute(pathname, routes) {
-  // exact match
+// -------------------------------------------------------------------
+//  Route finder (querystring‐aware)
+// -------------------------------------------------------------------
+export function findRoute(rawPathname: string, routes: Record<string, any>) {
+  // 1) drop query and hash
+  const pathname = rawPathname.split(/[?#]/)[0];
+
+  // 2) exact match
   if (routes[pathname]) {
     return { methods: routes[pathname], params: {} };
   }
-  // parameterized match
+
+  // 3) parameterized match (/:foo/:bar…)
   for (const [pattern, methods] of Object.entries(routes)) {
     if (!pattern.includes('/:')) continue;
 
     const parts = pattern.split('/').filter(Boolean);
-    const segs = pathname.split('/').filter(Boolean);
+    const segs  = pathname.split('/').filter(Boolean);
     if (parts.length !== segs.length) continue;
 
-    const paramNames = [] as string[];
+    const paramNames: string[] = [];
     const regex = new RegExp(
       '^/' +
-      parts
-        .map(p => {
-          if (p.startsWith(':')) {
-            paramNames.push(p.slice(1));
-            return '([^/]+)';
-          }
-          return p.replace(/[.*+?^${}()|[\\]\\]/g, '\\$&');
-        })
-        .join('/') +
+      parts.map(p => {
+        if (p.startsWith(':')) {
+          paramNames.push(p.slice(1));
+          return '([^/]+)';
+        }
+        // escape literal segments
+        return p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      }).join('/') +
       '/?$'
     );
+
     const m = pathname.match(regex);
     if (!m) continue;
 
-    const params = paramNames.reduce((o, name, i) => {
-      o[name] = decodeURIComponent(m[i + 1]);
-      return o;
+    const params = paramNames.reduce<Record<string,string>>((acc, name, i) => {
+      acc[name] = decodeURIComponent(m[i + 1]);
+      return acc;
     }, {});
+
     return { methods, params };
   }
+
+  // 4) nothing matched
   return null;
 }
 

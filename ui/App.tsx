@@ -389,26 +389,53 @@ export class TransactionWithSplit extends sComponent {
   }
 }
 
-// -------------------------------------------------------------------
-// 5. Data Listings Component (as an sComponent)
-// -------------------------------------------------------------------
-export class DataListings extends sComponent {
-  state = {
-    transactions: [] as any[],
-    customers: [] as any[],
-    submerchants: [] as any[],
+
+type TransactionStatus = "Authorized" | "SubmittedForSettlement" | "Settled" | /* …etc*/ string;
+
+interface DLState {
+  transactions: any[];
+  customers: any[];
+  submerchants: any[];
+  log: string;
+
+  // filter fields
+  txStartDate: string;
+  txEndDate: string;
+  txStatus: TransactionStatus;
+  custEmail: string;
+}
+
+export class DataListings extends sComponent<{}, DLState> {
+  state: DLState = {
+    transactions: [],
+    customers: [],
+    submerchants: [],
     log: "",
+
+    txStartDate: "",
+    txEndDate: "",
+    txStatus: "",
+    custEmail: ""
   };
 
-  constructor(props: any) {
-    super(props);
+  private buildQuery(params: Record<string,string>) {
+    const qs = new URLSearchParams();
+    Object.entries(params).forEach(([k,v]) => {
+      if (v) qs.set(k, v);
+    });
+    const str = qs.toString();
+    return str ? `?${str}` : "";
   }
 
   handleFetchTransactions = async () => {
+    const q = this.buildQuery({
+      startDate: this.state.txStartDate,
+      endDate:   this.state.txEndDate,
+      status:    this.state.txStatus
+    });
     try {
-      const response = await fetch(protocol + "://localhost:3000/transactions");
-      const data = await response.json();
-      console.log(data);
+      const res = await fetch(`${protocol}://localhost:3000/transactions${q}`);
+      const data = await res.json();
       if (data.transactions) {
         this.setState({ transactions: data.transactions, log: "Transactions fetched successfully" });
       } else {
@@ -420,10 +447,10 @@ export class DataListings extends sComponent {
   };
 
   handleFetchCustomers = async () => {
+    const q = this.buildQuery({ email: this.state.custEmail });
     try {
-      const response = await fetch(protocol + "://localhost:3000/customers");
-      const data = await response.json();
-      console.log(data);
+      const res = await fetch(`${protocol}://localhost:3000/customers${q}`);
+      const data = await res.json();
       if (data.customers) {
         this.setState({ customers: data.customers, log: "Customers fetched successfully" });
       } else {
@@ -436,9 +463,8 @@ export class DataListings extends sComponent {
 
   handleFetchSubmerchants = async () => {
     try {
-      const response = await fetch(protocol + "://localhost:3000/submerchants");
-      const data = await response.json();
-      console.log(data);
+      const res = await fetch(`${protocol}://localhost:3000/submerchants`);
+      const data = await res.json();
       if (data.submerchants) {
         this.setState({ submerchants: data.submerchants, log: "Submerchants fetched successfully" });
       } else {
@@ -450,21 +476,71 @@ export class DataListings extends sComponent {
   };
 
   render() {
-    const { transactions, customers, submerchants, log } = this.state;
+    const {
+      transactions, customers, submerchants, log,
+      txStartDate, txEndDate, txStatus, custEmail
+    } = this.state;
+
     return (
       <div style={{ margin: "10px 0" }}>
         <h2>Data Listings</h2>
-        <div style={{ marginBottom: "10px" }}>
-          <button onClick={this.handleFetchTransactions}>Refresh Transactions</button>
-          <button onClick={this.handleFetchCustomers} style={{ marginLeft: "10px" }}>
-            Refresh Customers
-          </button>
-          <button onClick={this.handleFetchSubmerchants} style={{ marginLeft: "10px" }}>
-            Refresh Submerchants
-          </button>
+
+        {/* ───── Filters ───── */}
+        <div style={{ marginBottom: "1em" }}>
+          <fieldset style={{ display: "inline-block", marginRight: "1em" }}>
+            <legend>Transaction Filters</legend>
+            <label>
+              Start date:{" "}
+              <input
+                type="date"
+                value={txStartDate}
+                onChange={(e) => this.setState({ txStartDate: e.target.value })}
+              />
+            </label>
+            <br />
+            <label>
+              End date:{" "}
+              <input
+                type="date"
+                value={txEndDate}
+                onChange={(e) => this.setState({ txEndDate: e.target.value })}
+              />
+            </label>
+            <br />
+            <label>
+              Status:{" "}
+              <input
+                placeholder="Settled, Authorized…"
+                value={txStatus}
+                onChange={(e) => this.setState({ txStatus: e.target.value })}
+              />
+            </label>
+            <br />
+            <button onClick={this.handleFetchTransactions}>Refresh Transactions</button>
+          </fieldset>
+
+          <fieldset style={{ display: "inline-block", marginRight: "1em" }}>
+            <legend>Customer Filters</legend>
+            <label>
+              Email contains:{" "}
+              <input
+                type="email"
+                placeholder="alice@example.com"
+                value={custEmail}
+                onChange={(e) => this.setState({ custEmail: e.target.value })}
+              />
+            </label>
+            <br />
+            <button onClick={this.handleFetchCustomers}>Refresh Customers</button>
+          </fieldset>
+
+          <fieldset style={{ display: "inline-block" }}>
+            <legend>Sub-merchants</legend>
+            <button onClick={this.handleFetchSubmerchants}>Refresh Submerchants</button>
+          </fieldset>
         </div>
 
-        {/* Transactions Table */}
+        {/* ───── Transactions Table ───── */}
         <h3>Transactions</h3>
         <table border={1} cellPadding={5}>
           <thead>
@@ -476,24 +552,24 @@ export class DataListings extends sComponent {
             </tr>
           </thead>
           <tbody>
-            {transactions.length > 0 ? (
-              transactions.map((tx, idx) => (
-                <tr key={idx}>
-                  <td>{tx.id}</td>
-                  <td>{tx.status}</td>
-                  <td>{tx.amount}</td>
-                  <td>{tx.createdAt ? new Date(tx.createdAt).toLocaleString() : ""}</td>
+            {transactions.length
+              ? transactions.map((tx, i) => (
+                  <tr key={i}>
+                    <td>{tx.id}</td>
+                    <td>{tx.status}</td>
+                    <td>{tx.amount}</td>
+                    <td>{tx.createdAt ? new Date(tx.createdAt).toLocaleString() : ""}</td>
+                  </tr>
+                ))
+              : (
+                <tr>
+                  <td colSpan={4}>No transactions found</td>
                 </tr>
-              ))
-            ) : (
-              <tr>
-                <td colSpan={4}>No transactions found</td>
-              </tr>
-            )}
+              )}
           </tbody>
         </table>
 
-        {/* Customers Table */}
+        {/* ───── Customers Table ───── */}
         <h3>Customers</h3>
         <table border={1} cellPadding={5}>
           <thead>
@@ -503,22 +579,22 @@ export class DataListings extends sComponent {
             </tr>
           </thead>
           <tbody>
-            {customers.length > 0 ? (
-              customers.map((cust, idx) => (
-                <tr key={idx}>
-                  <td>{cust.id}</td>
-                  <td>{cust.email}</td>
+            {customers.length
+              ? customers.map((c, i) => (
+                  <tr key={i}>
+                    <td>{c.id}</td>
+                    <td>{c.email}</td>
+                  </tr>
+                ))
+              : (
+                <tr>
+                  <td colSpan={2}>No customers found</td>
                 </tr>
-              ))
-            ) : (
-              <tr>
-                <td colSpan={2}>No customers found</td>
-              </tr>
-            )}
+              )}
           </tbody>
         </table>
 
-        {/* Submerchants Table */}
+        {/* ───── Sub-merchants Table ───── */}
         <h3>Submerchants</h3>
         <table border={1} cellPadding={5}>
           <thead>
@@ -528,21 +604,22 @@ export class DataListings extends sComponent {
             </tr>
           </thead>
           <tbody>
-            {submerchants.length > 0 ? (
-              submerchants.map((sub, idx) => (
-                <tr key={idx}>
-                  <td>{sub.id || sub.merchantAccount?.id}</td>
-                  <td>{sub.status || sub.merchantAccount?.status || "N/A"}</td>
+            {submerchants.length
+              ? submerchants.map((sub, i) => (
+                  <tr key={i}>
+                    <td>{sub.id || sub.merchantAccount?.id}</td>
+                    <td>{sub.status || sub.merchantAccount?.status || "N/A"}</td>
+                  </tr>
+                ))
+              : (
+                <tr>
+                  <td colSpan={2}>No submerchants found</td>
                 </tr>
-              ))
-            ) : (
-              <tr>
-                <td colSpan={2}>No submerchants found</td>
-              </tr>
-            )}
+              )}
           </tbody>
         </table>
-        <div>{log}</div>
+
+        <div style={{ marginTop: "1em", fontStyle: "italic" }}>{log}</div>
       </div>
     );
   }
