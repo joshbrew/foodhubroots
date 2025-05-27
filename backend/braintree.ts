@@ -117,30 +117,50 @@ export async function processCheckout(customerId: string, amount: string): Promi
   return result.transaction.id;
 }
 
+
+
+
 /**
  * Creates a new customer with the provided data.
  *
- * Uses the `CustomerCreateRequest` type for the input data.
- *
- * @param data - Customer creation details.
- * @returns A Promise resolving to the new customer's ID.
- *
- * **HTTP Mapping:**  
- * POST `/create-customer`
+ * Uses the full CustomerCreateRequest type, but only maps the
+ * subset of fields that Braintree’s SDK actually accepts.
  */
-export async function createCustomer(data: CustomerCreateRequest): Promise<string> {
-  const result = await btGateway.customer.create({
-    firstName: data.firstName,
-    lastName: data.lastName,
-    email: data.email,
-    paymentMethodNonce: data.paymentMethodNonce,
-    company: data.company,
-    fax: data.fax,
-    phone: data.phone,
-    website: data.website,
-    // Additional fields from CustomerCreateRequest may be included as needed.
-  });
+export async function createCustomer(
+  data: CustomerCreateRequest
+): Promise<string> {
+  // Start with an empty request object
+  const req: braintree.CustomerCreateRequest = {};
+
+  // ── Top‐level scalar fields ──
+  if (data.id)                          req.id      = data.id;
+  if (data.firstName)                   req.firstName = data.firstName;
+  if (data.lastName)                    req.lastName  = data.lastName;
+  if (data.company)                     req.company   = data.company;
+  if (data.email)                       req.email     = data.email;
+  if (data.fax)                         req.fax       = data.fax;
+  if (data.website)                     req.website   = data.website;
+
+  // ── Phone: prefer internationalPhone if present ──
+  if (data.internationalPhone) {
+    // e.g. { countryCode: "1", nationalNumber: "4155552671" }
+    req.phone = `+${data.internationalPhone.countryCode}${data.internationalPhone.nationalNumber}`;
+  } else if (data.phone) {
+    req.phone = data.phone;
+  }
+
+  // ── Payment‐method nonce (vault a payment method) ──
+  if (data.paymentMethodNonce)          req.paymentMethodNonce = data.paymentMethodNonce;
+  if (data.deviceData)                  req.deviceData          = data.deviceData;
+  
+  // ── Custom fields & fraud data ──
+  if (data.customFields)                req.customFields = data.customFields;
+  if (data.riskData)                    req.riskData     = data.riskData;
+
+  // Send to Braintree
+  const result = await btGateway.customer.create(req);
   if (!result.success) {
+    // bubble up the Braintree error message
     throw new Error(result.message);
   }
   return result.customer.id;
@@ -200,39 +220,83 @@ export async function updateCustomer(data: {
 }
 
 
+
+/**
+ * Creates a new payment method (creditCard or nonce) for a customer.
+ *
+ * Accepts the full CreditCardCreateRequest shape.
+ */
+export async function createPaymentMethod(
+  data: CreditCardCreateRequest
+): Promise<string> {
+  // Build Braintree request:
+  const req: braintree.CreditCardCreateRequest = {
+    customerId: data.customerId,
+    paymentMethodNonce: data.paymentMethodNonce,
+    token: data.token,
+    number: data.number,
+    cvv: data.cvv,
+    expirationDate: data.expirationDate,
+    expirationMonth: data.expirationMonth,
+    expirationYear: data.expirationYear,
+    cardholderName: data.cardholderName,
+    billingAddress: data.billingAddress && {
+      streetAddress: data.billingAddress.streetAddress,
+      extendedAddress: data.billingAddress.extendedAddress,
+      locality: data.billingAddress.locality,
+      region: data.billingAddress.region,
+      postalCode: data.billingAddress.postalCode,
+      countryCodeAlpha2: data.billingAddress.countryCodeAlpha2,
+      countryCodeAlpha3: data.billingAddress.countryCodeAlpha3,
+      countryCodeNumeric: data.billingAddress.countryCodeNumeric,
+      countryName: data.billingAddress.countryName
+    },
+    billingAddressId: data.billingAddressId,
+    options: data.options
+  };
+
+  // Create via the creditCard API:
+  const result = await btGateway.creditCard.create(req);
+  if (!result.success) {
+    throw new Error(result.message);
+  }
+  return result.creditCard.token;
+}
+
+
 /** Street address details */
 export interface AddressInput {
   streetAddress: string;
-  locality:      string;
-  region:        string;
-  postalCode:    string;
+  locality: string;
+  region: string;
+  postalCode: string;
 }
 
 /** Individual (owner) details */
 export interface IndividualInput {
-  firstName:   string;
-  lastName:    string;
-  email:       string;
-  phone:       string;
+  firstName: string;
+  lastName: string;
+  email: string;
+  phone: string;
   dateOfBirth: string;  // YYYY-MM-DD
-  ssn:         string;  // last-4 or full
-  address:     AddressInput;
+  ssn: string;  // last-4 or full
+  address: AddressInput;
 }
 
 /** Business (DBA) details */
 export interface BusinessInput {
   legalName: string;
-  dbaName:   string;
-  taxId:     string;
-  address:   AddressInput;
+  dbaName: string;
+  taxId: string;
+  address: AddressInput;
 }
 
 /** Funding instructions for payouts */
 export interface FundingInput {
-  descriptor:    string;
-  destination:   "bank" | "mobile"; 
-  email:         string;
-  mobilePhone:   string;
+  descriptor: string;
+  destination: "bank" | "mobile";
+  email: string;
+  mobilePhone: string;
   accountNumber: string;
   routingNumber: string;
 }
@@ -241,10 +305,10 @@ export interface FundingInput {
 export interface SubmerchantCreateRequest {
   /** Optional override for the merchant account ID */
   id?: string;
-  individual:               IndividualInput;
-  business?:                BusinessInput;
-  funding:                  FundingInput;
-  tosAccepted:              boolean;
+  individual: IndividualInput;
+  business?: BusinessInput;
+  funding: FundingInput;
+  tosAccepted: boolean;
   /** If omitted, pulled from process.env.BRAINTREE_MASTER_MERCHANT_ID */
   masterMerchantAccountId?: string;
 }
@@ -265,24 +329,24 @@ export async function createSubmerchant(
 ): Promise<braintree.MerchantAccount | MerchantAccountResponse> {
   const request: braintree.MerchantAccountCreateRequest = {
     individual: {
-      firstName:    data.individual.firstName,
-      lastName:     data.individual.lastName,
-      email:        data.individual.email,
-      phone:        data.individual.phone,
-      dateOfBirth:  data.individual.dateOfBirth,
-      ssn:          data.individual.ssn,
-      address:      {
+      firstName: data.individual.firstName,
+      lastName: data.individual.lastName,
+      email: data.individual.email,
+      phone: data.individual.phone,
+      dateOfBirth: data.individual.dateOfBirth,
+      ssn: data.individual.ssn,
+      address: {
         streetAddress: data.individual.address.streetAddress,
-        locality:      data.individual.address.locality,
-        region:        data.individual.address.region,
-        postalCode:    data.individual.address.postalCode,
+        locality: data.individual.address.locality,
+        region: data.individual.address.region,
+        postalCode: data.individual.address.postalCode,
       }
     },
     funding: {
-      descriptor:    data.funding.descriptor,
-      destination:   data.funding.destination,
-      email:         data.funding.email,
-      mobilePhone:   data.funding.mobilePhone,
+      descriptor: data.funding.descriptor,
+      destination: data.funding.destination,
+      email: data.funding.email,
+      mobilePhone: data.funding.mobilePhone,
       accountNumber: data.funding.accountNumber,
       routingNumber: data.funding.routingNumber,
     },
@@ -295,18 +359,18 @@ export async function createSubmerchant(
     ...(data.id ? { id: data.id } : {}),
     ...(data.business
       ? {
-          business: {
-            legalName: data.business.legalName,
-            dbaName:   data.business.dbaName,
-            taxId:     data.business.taxId,
-            address:   {
-              streetAddress: data.business.address.streetAddress,
-              locality:      data.business.address.locality,
-              region:        data.business.address.region,
-              postalCode:    data.business.address.postalCode,
-            }
+        business: {
+          legalName: data.business.legalName,
+          dbaName: data.business.dbaName,
+          taxId: data.business.taxId,
+          address: {
+            streetAddress: data.business.address.streetAddress,
+            locality: data.business.address.locality,
+            region: data.business.address.region,
+            postalCode: data.business.address.postalCode,
           }
         }
+      }
       : {}),
   };
 
@@ -515,8 +579,8 @@ export async function getSubmerchantsFromFile(): Promise<(braintree.MerchantAcco
 export async function processWebhook(btSignature: string, btPayload: string): Promise<SubMerchantAccountWebhookNotification | any> {
   return new Promise((resolve, reject) => {
     btGateway.webhookNotification.parse(btSignature, btPayload)
-    .then(resolve)
-    .catch(reject);
+      .then(resolve)
+      .catch(reject);
   });
 }
 
@@ -572,28 +636,6 @@ export async function deleteCustomer(customerId: string): Promise<void> {
   await btGateway.customer.delete(customerId);
 }
 
-/**
- * Creates a new payment method for a customer.
- *
- * @param data - An object containing customerId, paymentMethodNonce, and an optional makeDefault flag.
- * @returns A Promise resolving to the token for the new payment method.
- *
- * **HTTP Mapping:**  
- * POST `/create-payment-method`
- */
-export async function createPaymentMethod(data: { customerId: string; paymentMethodNonce: string; makeDefault?: boolean }): Promise<string> {
-  const result = await btGateway.paymentMethod.create({
-    customerId: data.customerId,
-    paymentMethodNonce: data.paymentMethodNonce,
-    options: {
-      makeDefault: data.makeDefault || false
-    }
-  });
-  if (!result.success) {
-    throw new Error(result.message);
-  }
-  return result.paymentMethod.token;
-}
 
 /**
  * Updates a payment method.
@@ -925,8 +967,8 @@ export const braintreeRoutes: Routes = {
   "/create-payment-method": {
     POST: async (ctx: Context) => {
       try {
-        const { customerId, paymentMethodNonce, makeDefault } = await ctx.body();
-        const token = await createPaymentMethod({ customerId, paymentMethodNonce, makeDefault });
+        const data = (await ctx.body()) as CreditCardCreateRequest;
+        const token = await createPaymentMethod(data);
         await ctx.json(200, { success: true, token });
       } catch (err: any) {
         await ctx.json(500, { error: err.message || "Failed to create payment method" });

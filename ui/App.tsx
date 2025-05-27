@@ -25,6 +25,7 @@ export class App extends sComponent {
         <FindSubmerchant />
         <hr />
         <CreateCustomer />
+        <AddPaymentMethod/>
         <hr />
         <RegularCheckout />
         <hr />
@@ -37,137 +38,453 @@ export class App extends sComponent {
   }
 }
 
-// -------------------------------------------------------------------
-// 1. Create Customer Component (as an sComponent)
-// -------------------------------------------------------------------
 
-export class CreateCustomer extends sComponent<{}, {
-  firstName: string;
-  lastName: string;
-  email: string;
-  clientToken: string | null;
-  dropInInstance: any;
-  createdCustomerId: string;
-  log: string;
-}> {
+// ───────────────────────────────────────────────────────
+// 1) CreateCustomer Component
+// ───────────────────────────────────────────────────────
 
-  state = {
-    firstName: "",
-    lastName: "",
-    email: "",
-    clientToken: null as any,
-    dropInInstance: null as any,
-    createdCustomerId: "",
-    log: "",
+interface CreateCustState {
+  firstName:      string;
+  lastName:       string;
+  email:          string;
+  company:        string;
+  phone:          string;
+  fax:            string;
+  website:        string;
+
+  clientToken:    string | null;
+  dropinInstance: any | null;
+  createdId:      string | null;
+  log:            string;
+}
+
+export class CreateCustomer extends Component<{}, CreateCustState> {
+  state: CreateCustState = {
+    firstName:      "",
+    lastName:       "",
+    email:          "",
+    company:        "",
+    phone:          "",
+    fax:            "",
+    website:        "",
+
+    clientToken:    null,
+    dropinInstance: null,
+    createdId:      null,
+    log:            ""
   };
 
   async componentDidMount() {
     try {
-      // 1) fetch the token
-      if (!this.state.clientToken) {
-        console.log("CreateCustomer Component getting client token")
-        const res = await fetch(`${protocol}://localhost:3000/client-token`);
-        const tokenData = await res.json();
-        await this.setState({ clientToken: tokenData.clientToken });
-        this.initializeDropIn();
-      }
+      const res = await fetch(`${protocol}://localhost:3000/client-token`);
+      const { clientToken } = await res.json();
+      this.setState({ clientToken });
+
+      dropin.create(
+        { authorization: clientToken, container: "#customer-dropin" },
+        (err, inst) => {
+          if (err) {
+            console.error(err);
+            this.setState({ log: "Drop-in failed to initialize." });
+            return;
+          }
+          this.setState({ dropinInstance: inst });
+        }
+      );
     } catch (err: any) {
-      console.error("Failed to fetch client token:", err);
-      this.setState({ log: "Could not get client token." });
+      this.setState({ log: `Could not fetch client token: ${err.message}` });
     }
   }
 
+  handleChange = (e: ChangeEvent<HTMLInputElement>) => {
+    const { name, value } = e.target;
+    this.setState({ [name]: value } as any);
+  };
 
-  initializeDropIn() {
-    const { clientToken } = this.state;
-    if (!clientToken) {
-      console.log(clientToken, "No clientToken!");
+  handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    const form = e.currentTarget;
+    if (!form.checkValidity()) {
+      form.reportValidity();
       return;
     }
 
-    dropin.create(
-      {
-        authorization: clientToken,
-        container: "#dropin-container",
-      },
-      (createErr, instance) => {
-        if (createErr) {
-          console.error("Drop-in create error:", createErr);
-          return;
-        }
-        this.setState({ dropInInstance: instance });
-      }
-    );
-  }
+    const {
+      dropinInstance,
+      firstName, lastName, email,
+      company, phone, fax, website
+    } = this.state;
 
-  handleCreateCustomer = async () => {
-    const { dropInInstance, firstName, lastName, email } = this.state;
-    if (!dropInInstance) {
+    if (!dropinInstance) {
       this.setState({ log: "Drop-in not ready." });
       return;
     }
 
+    this.setState({ log: "Creating customer…" });
+
     try {
-      const { nonce } = await dropInInstance.requestPaymentMethod();
-      const response = await fetch(`${protocol}://localhost:3000/create-customer`, {
+      const { nonce } = await dropinInstance.requestPaymentMethod();
+      const payload = {
+        firstName,
+        lastName,
+        email,
+        company,
+        phone,
+        fax,
+        website,
+        paymentMethodNonce: nonce
+      };
+
+      const res = await fetch(`${protocol}://localhost:3000/create-customer`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ firstName, lastName, email, paymentMethodNonce: nonce }),
+        body: JSON.stringify(payload)
       });
-      const data = await response.json();
+
+      const data = await res.json();
       if (data.success) {
-        this.setState({
-          createdCustomerId: data.customerId,
-          log: `Customer created: ${data.customerId}`,
-        });
+        this.setState({ createdId: data.customerId, log: "Customer created!" });
       } else {
         this.setState({ log: `Error: ${data.error}` });
       }
     } catch (err: any) {
-      console.error("Error creating customer:", err);
-      this.setState({ log: err.message });
+      this.setState({ log: `Network error: ${err.message}` });
     }
   };
 
   render() {
-    const { firstName, lastName, email, createdCustomerId, log } = this.state;
+    const {
+      firstName, lastName, email,
+      company, phone, fax, website,
+      createdId, log
+    } = this.state;
+
     return (
-      <div style={{ margin: "10px 0" }}>
+      <form onSubmit={this.handleSubmit} style={{ margin: 20 }}>
         <h2>Create Customer</h2>
-        <div>
-          <label>First Name:</label>
+
+        <label>
+          First Name:
           <input
+            name="firstName"
             type="text"
+            required
             value={firstName}
-            onChange={e => this.setState({ firstName: e.target.value })}
-            style={{ marginRight: "10px" }}
+            onChange={this.handleChange}
+            style={{ marginLeft: 8 }}
           />
-          <label>Last Name:</label>
+        </label>
+        <br />
+
+        <label>
+          Last Name:
           <input
+            name="lastName"
             type="text"
+            required
             value={lastName}
-            onChange={e => this.setState({ lastName: e.target.value })}
-            style={{ marginRight: "10px" }}
+            onChange={this.handleChange}
+            style={{ marginLeft: 8 }}
           />
-          <label>Email:</label>
+        </label>
+        <br />
+
+        <label>
+          Email:
           <input
-            type="text"
+            name="email"
+            type="email"
+            required
             value={email}
-            onChange={e => this.setState({ email: e.target.value })}
-            style={{ marginRight: "10px" }}
+            onChange={this.handleChange}
+            style={{ marginLeft: 8 }}
           />
-        </div>
+        </label>
+        <br />
 
-        {/* this is where drop-in will attach itself */}
-        <div id="dropin-container" style={{ margin: "10px 0" }} />
+        <label>
+          Company:
+          <input
+            name="company"
+            type="text"
+            value={company}
+            onChange={this.handleChange}
+            style={{ marginLeft: 8 }}
+          />
+        </label>
+        <br />
 
-        <button onClick={this.handleCreateCustomer}>Create Customer</button>
+        <label>
+          Phone:
+          <input
+            name="phone"
+            type="tel"
+            value={phone}
+            onChange={this.handleChange}
+            style={{ marginLeft: 8 }}
+          />
+        </label>
+        <br />
 
-        <div style={{ margin: "5px 0" }}>
-          Customer ID: <strong>{createdCustomerId || "None"}</strong>
-        </div>
-        <div>{log}</div>
-      </div>
+        <label>
+          Fax:
+          <input
+            name="fax"
+            type="tel"
+            value={fax}
+            onChange={this.handleChange}
+            style={{ marginLeft: 8 }}
+          />
+        </label>
+        <br />
+
+        <label>
+          Website:
+          <input
+            name="website"
+            type="url"
+            value={website}
+            onChange={this.handleChange}
+            style={{ marginLeft: 8 }}
+          />
+        </label>
+
+        <hr />
+
+        <div id="customer-dropin" style={{ margin: "10px 0" }} />
+
+        <button type="submit">Create Customer</button>
+
+        {createdId && (
+          <div style={{ marginTop: 12 }}>
+            Customer ID: <strong>{createdId}</strong>
+          </div>
+        )}
+        {log && (
+          <div style={{ marginTop: 12, color: "red" }}>{log}</div>
+        )}
+      </form>
+    );
+  }
+}
+
+
+
+interface BillingAddress {
+  streetAddress:     string;
+  extendedAddress:   string;
+  locality:          string;
+  region:            string;
+  postalCode:        string;
+  countryCodeAlpha2: string;
+}
+
+interface PaymentMethodState {
+  customerId:     string;
+  billingAddress: BillingAddress;
+  clientToken:    string | null;
+  dropinInstance: any | null;
+  token:          string | null;
+  log:            string;
+}
+
+export class AddPaymentMethod extends Component<{}, PaymentMethodState> {
+  state: PaymentMethodState = {
+    customerId: "",
+    billingAddress: {
+      streetAddress: "",
+      extendedAddress: "",
+      locality: "",
+      region: "",
+      postalCode: "",
+      countryCodeAlpha2: ""
+    },
+    clientToken:    null,
+    dropinInstance: null,
+    token:          null,
+    log:            ""
+  };
+
+  async componentDidMount() {
+    try {
+      const res = await fetch(`${protocol}://localhost:3000/client-token`);
+      const { clientToken } = await res.json();
+      this.setState({ clientToken });
+      dropin.create(
+        { authorization: clientToken, container: "#pm-dropin" },
+        (err, inst) => {
+          if (err) {
+            console.error(err);
+            this.setState({ log: "Drop-in init failed" });
+            return;
+          }
+          this.setState({ dropinInstance: inst });
+        }
+      );
+    } catch (err: any) {
+      this.setState({ log: `Token error: ${err.message}` });
+    }
+  }
+
+  handleChange = (
+    e: ChangeEvent<HTMLInputElement>
+  ) => {
+    const { name, value } = e.target;
+    // name will be either "customerId" or "billingAddress.field"
+    if (name === "customerId") {
+      this.setState({ customerId: value });
+    } else {
+      // billingAddress.foo
+      this.setState((prev) => {
+        const ba = { ...prev.billingAddress, [name.split(".")[1]]: value };
+        return { billingAddress: ba };
+      });
+    }
+  };
+
+  handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    const form = e.currentTarget;
+    if (!form.checkValidity()) {
+      form.reportValidity();
+      return;
+    }
+
+    const { dropinInstance, customerId, billingAddress } = this.state;
+    if (!dropinInstance) {
+      this.setState({ log: "Drop-in not ready." });
+      return;
+    }
+
+    this.setState({ log: "Vaulting payment method…" });
+    try {
+      const { nonce } = await dropinInstance.requestPaymentMethod();
+      const res = await fetch(`${protocol}://localhost:3000/create-payment-method`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          customerId: customerId.trim(),
+          paymentMethodNonce: nonce,
+          billingAddress,     // <— include the address you collected
+          options: { makeDefault: true }
+        })
+      });
+      const data = await res.json();
+      if (data.success) {
+        this.setState({ token: data.token, log: "Payment method created!" });
+      } else {
+        this.setState({ log: `Error: ${data.error}` });
+      }
+    } catch (err: any) {
+      this.setState({ log: `Error: ${err.message}` });
+    }
+  };
+
+  render() {
+    const { customerId, billingAddress, token, log } = this.state;
+    return (
+      <form onSubmit={this.handleSubmit} style={{ margin: 20 }}>
+        <h2>Add Payment Method</h2>
+
+        <label>
+          Customer ID:
+          <input
+            name="customerId"
+            type="text"
+            required
+            value={customerId}
+            onChange={this.handleChange}
+            style={{ marginLeft: 8 }}
+          />
+        </label>
+
+        <hr />
+
+        <div id="pm-dropin" style={{ margin: "10px 0" }} />
+
+        <h3>Billing Address</h3>
+        <label>
+          Street:
+          <input
+            name="billingAddress.streetAddress"
+            type="text"
+            required
+            value={billingAddress.streetAddress}
+            onChange={this.handleChange}
+            style={{ marginLeft: 8, width: 300 }}
+          />
+        </label>
+        <br/>
+        <label>
+          Extended:
+          <input
+            name="billingAddress.extendedAddress"
+            type="text"
+            value={billingAddress.extendedAddress}
+            onChange={this.handleChange}
+            style={{ marginLeft: 8, width: 300 }}
+          />
+        </label>
+        <br/>
+        <label>
+          City:
+          <input
+            name="billingAddress.locality"
+            type="text"
+            required
+            value={billingAddress.locality}
+            onChange={this.handleChange}
+            style={{ marginLeft: 8 }}
+          />
+        </label>
+        <label style={{ marginLeft: 16 }}>
+          Region:
+          <input
+            name="billingAddress.region"
+            type="text"
+            required
+            value={billingAddress.region}
+            onChange={this.handleChange}
+            style={{ marginLeft: 8, width: 60 }}
+          />
+        </label>
+        <label style={{ marginLeft: 16 }}>
+          Postal:
+          <input
+            name="billingAddress.postalCode"
+            type="text"
+            required
+            value={billingAddress.postalCode}
+            onChange={this.handleChange}
+            style={{ marginLeft: 8, width: 80 }}
+          />
+        </label>
+        <br/>
+        <label>
+          Country (2-letter):
+          <input
+            name="billingAddress.countryCodeAlpha2"
+            type="text"
+            required
+            maxLength={2}
+            value={billingAddress.countryCodeAlpha2}
+            onChange={this.handleChange}
+            style={{ marginLeft: 8, width: 40 }}
+          />
+        </label>
+
+        <hr />
+        <button type="submit">Vault Payment Method</button>
+
+        {token && (
+          <div style={{ marginTop: 12 }}>
+            New Token: <strong>{token}</strong>
+          </div>
+        )}
+        {log && (
+          <div style={{ marginTop: 12, color: "red" }}>{log}</div>
+        )}
+      </form>
     );
   }
 }
@@ -271,7 +588,7 @@ interface FundingState {
   routingNumber: string;
 }
 
-interface State {
+interface SubMerchant {
   id:             string;
   idExists:       boolean | null;
   tosAccepted:    boolean;
@@ -283,8 +600,8 @@ interface State {
   log:            string;
 }
 
-export class CreateSubMerchant extends Component<{}, State> {
-  state: State = {
+export class CreateSubMerchant extends Component<{}, SubMerchant> {
+  state: SubMerchant = {
     id: "",
     idExists: null,
     tosAccepted: false,
