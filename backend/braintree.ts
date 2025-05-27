@@ -133,13 +133,13 @@ export async function createCustomer(
   const req: braintree.CustomerCreateRequest = {};
 
   // ── Top‐level scalar fields ──
-  if (data.id)                          req.id      = data.id;
-  if (data.firstName)                   req.firstName = data.firstName;
-  if (data.lastName)                    req.lastName  = data.lastName;
-  if (data.company)                     req.company   = data.company;
-  if (data.email)                       req.email     = data.email;
-  if (data.fax)                         req.fax       = data.fax;
-  if (data.website)                     req.website   = data.website;
+  if (data.id) req.id = data.id;
+  if (data.firstName) req.firstName = data.firstName;
+  if (data.lastName) req.lastName = data.lastName;
+  if (data.company) req.company = data.company;
+  if (data.email) req.email = data.email;
+  if (data.fax) req.fax = data.fax;
+  if (data.website) req.website = data.website;
 
   // ── Phone: prefer internationalPhone if present ──
   if (data.internationalPhone) {
@@ -150,12 +150,12 @@ export async function createCustomer(
   }
 
   // ── Payment‐method nonce (vault a payment method) ──
-  if (data.paymentMethodNonce)          req.paymentMethodNonce = data.paymentMethodNonce;
-  if (data.deviceData)                  req.deviceData          = data.deviceData;
-  
+  if (data.paymentMethodNonce) req.paymentMethodNonce = data.paymentMethodNonce;
+  if (data.deviceData) req.deviceData = data.deviceData;
+
   // ── Custom fields & fraud data ──
-  if (data.customFields)                req.customFields = data.customFields;
-  if (data.riskData)                    req.riskData     = data.riskData;
+  if (data.customFields) req.customFields = data.customFields;
+  if (data.riskData) req.riskData = data.riskData;
 
   // Send to Braintree
   const result = await btGateway.customer.create(req);
@@ -313,21 +313,28 @@ export interface SubmerchantCreateRequest {
   masterMerchantAccountId?: string;
 }
 
-/**
- * Creates a submerchant account using provided data.
- *
- * @param data - An object containing the `individual` and `funding` details.
- * @returns A Promise resolving to a MerchantAccount object, which may be either
- * a braintree.MerchantAccount or a MerchantAccountResponse.
- *
- * **HTTP Mapping:**  
- * POST `/create-submerchant`
- */
 
-export async function createSubmerchant(
-  data: SubmerchantCreateRequest
-): Promise<braintree.MerchantAccount | MerchantAccountResponse> {
-  const request: braintree.MerchantAccountCreateRequest = {
+/*******************************************************************************
+ *  createOrUpdateSubmerchant()
+ *  ---------------------------------------------------------------------------
+ *  • If `isUpdate` is falsy  →  creates a brand-new merchant account
+ *  • If `isUpdate` is truthy →  updates the existing account whose `id` you
+ *    pass in `data.id`  (Braintree requires the id as first arg of `.update`)
+ *
+ *  The input shape stays the same as before; we simply add an optional flag.
+ ******************************************************************************/
+
+export interface SubmerchantUpsertRequest extends SubmerchantCreateRequest {
+  /** when true run an update instead of a create */
+  isUpdate?: boolean;
+}
+
+export async function createOrUpdateSubmerchant(
+  data: SubmerchantUpsertRequest
+): Promise<braintree.MerchantAccount> {
+
+  /* ---------- shared portions (create OR update) ------------------ */
+  const common = {
     individual: {
       firstName: data.individual.firstName,
       lastName: data.individual.lastName,
@@ -339,7 +346,7 @@ export async function createSubmerchant(
         streetAddress: data.individual.address.streetAddress,
         locality: data.individual.address.locality,
         region: data.individual.address.region,
-        postalCode: data.individual.address.postalCode,
+        postalCode: data.individual.address.postalCode
       }
     },
     funding: {
@@ -348,38 +355,48 @@ export async function createSubmerchant(
       email: data.funding.email,
       mobilePhone: data.funding.mobilePhone,
       accountNumber: data.funding.accountNumber,
-      routingNumber: data.funding.routingNumber,
+      routingNumber: data.funding.routingNumber
     },
-    tosAccepted: data.tosAccepted,
-    masterMerchantAccountId:
-      data.masterMerchantAccountId ||
-      process.env.BRAINTREE_MASTER_MERCHANT_ID!,
-
-    // optional overrides:
-    ...(data.id ? { id: data.id } : {}),
-    ...(data.business
-      ? {
-        business: {
-          legalName: data.business.legalName,
-          dbaName: data.business.dbaName,
-          taxId: data.business.taxId,
-          address: {
-            streetAddress: data.business.address.streetAddress,
-            locality: data.business.address.locality,
-            region: data.business.address.region,
-            postalCode: data.business.address.postalCode,
-          }
+    ...(data.business && {
+      business: {
+        legalName: data.business.legalName,
+        dbaName: data.business.dbaName,
+        taxId: data.business.taxId,
+        address: {
+          streetAddress: data.business.address.streetAddress,
+          locality: data.business.address.locality,
+          region: data.business.address.region,
+          postalCode: data.business.address.postalCode
         }
       }
-      : {}),
-  };
+    })
+  } as braintree.MerchantAccountCreateRequest &
+    braintree.MerchantAccountUpdateRequest; // same fields
 
-  const result = await btGateway.merchantAccount.create(request);
-  if (!result.success) {
-    throw new Error(result.message);
+  /* ---------- CREATE ------------------------------------------------ */
+  if (!data.isUpdate) {
+    const req: braintree.MerchantAccountCreateRequest = {
+      ...common,
+      tosAccepted: data.tosAccepted,
+      masterMerchantAccountId:
+        data.masterMerchantAccountId ?? process.env.BRAINTREE_MASTER_MERCHANT_ID!,
+      ...(data.id ? { id: data.id } : {})
+    };
+
+    const res = await btGateway.merchantAccount.create(req);
+    if (!res.success) throw new Error(res.message);
+    return res.merchantAccount;
   }
-  return result.merchantAccount;
+
+  /* ---------- UPDATE ------------------------------------------------ */
+  if (!data.id) throw new Error("Updating a sub-merchant requires data.id");
+
+  const res = await btGateway.merchantAccount.update(data.id, common);
+  if (!res.success) throw new Error(res.message);
+  return res.merchantAccount;
 }
+
+
 
 /**
  * Processes a split transaction and returns earnings details.
@@ -567,6 +584,25 @@ export async function getSubmerchantsFromFile(): Promise<(braintree.MerchantAcco
 }
 
 /**
+ * Retrieves _all_ submerchant accounts.
+ *
+ * @returns A Promise resolving to an array of MerchantAccount objects.
+ *
+ * **HTTP Mapping:**  
+ * GET `/get-all-submerchants`
+ */
+export function getAllMerchants(): Promise<braintree.MerchantAccount[]> {
+  return new Promise((resolve, reject) => {
+    //@ts-ignore
+    btGateway.merchantAccount.all((err, merchantAccounts) => {
+      if (err) return reject(err);
+      // here merchantAccounts is already MerchantAccount[]
+      resolve(merchantAccounts);
+    });
+  });
+}
+
+/**
  * Processes a webhook notification from Braintree.
  *
  * @param btSignature - The Braintree signature provided in the webhook.
@@ -583,6 +619,7 @@ export async function processWebhook(btSignature: string, btPayload: string): Pr
       .catch(reject);
   });
 }
+
 
 /* ===================================================================
    Additional Professional Operations
@@ -756,43 +793,63 @@ export const braintreeRoutes: Routes = {
   },
 
 
+  /* ─────────────  TRANSACTIONS  ───────────── */
   "/transactions": {
     GET: async (ctx: Context) => {
       try {
-        const { query } = parse(ctx.req.url || '', true);
-        // parse all string params straight off the URL:
+        const { query } = parse(ctx.req.url || "", true);
+
+        /* plain-text filters ⬇ */
         const filters: TransactionQuery = {
-          startDate: typeof query.startDate === 'string' ? query.startDate : undefined,
-          endDate: typeof query.endDate === 'string' ? query.endDate : undefined,
-          status: typeof query.status === 'string' ? query.status : undefined as any,
-          customerId: typeof query.customerId === 'string' ? query.customerId : undefined
+          startDate: typeof query.startDate === "string" ? query.startDate : undefined,
+          endDate: typeof query.endDate === "string" ? query.endDate : undefined,
+          status: typeof query.status === "string" ? query.status : undefined as any,
+          customerId: typeof query.customerId === "string" ? query.customerId : undefined
         };
-        const transactions = await getTransactions(filters);
-        console.log("TRANSACTION QUERY:", transactions);
-        await ctx.json(200, { transactions });
+
+        /* pagination (page 0 = first page) */
+        const page = Number(query.page ?? 0);
+        const pageSize = Number(query.limit ?? 25);
+
+        const all = await getTransactions(filters);
+        const slice = all.slice(page * pageSize, page * pageSize + pageSize);
+
+        await ctx.json(200, {
+          transactions: slice,
+          total: all.length
+        });
       } catch (err: any) {
-        await ctx.json(500, { error: err.message || 'Failed to fetch transactions' });
+        await ctx.json(500, { error: err.message || "Failed to fetch transactions" });
       }
     }
   },
 
+  /* ─────────────  CUSTOMERS  ───────────── */
   "/customers": {
     GET: async (ctx: Context) => {
-      console.log("CALLED /customers")
       try {
-        const { query } = parse(ctx.req.url || '', true);
+        const { query } = parse(ctx.req.url || "", true);
+
         const filters: CustomerQuery = {
-          email: typeof query.email === 'string' ? query.email : undefined,
-          firstName: typeof query.firstName === 'string' ? query.firstName : undefined,
-          lastName: typeof query.lastName === 'string' ? query.lastName : undefined,
-          createdAfter: typeof query.createdAfter === 'string' ? query.createdAfter : undefined,
-          createdBefore: typeof query.createdBefore === 'string' ? query.createdBefore : undefined
+          email: typeof query.email === "string" ? query.email : undefined,
+          firstName: typeof query.firstName === "string" ? query.firstName : undefined,
+          lastName: typeof query.lastName === "string" ? query.lastName : undefined,
+          createdAfter: typeof query.createdAfter === "string" ? query.createdAfter : undefined,
+          createdBefore: typeof query.createdBefore === "string" ? query.createdBefore : undefined
         };
-        const customers = await getAllCustomers(filters);
-        console.log("CUSTOMER QUERY:", customers);
-        await ctx.json(200, { customers });
+
+        const page = Number(query.page ?? 0);
+        const pageSize = Number(query.limit ?? 25);
+
+        const all = await getAllCustomers(filters);
+        const slice = all.slice(page * pageSize, page * pageSize + pageSize);
+
+        await ctx.json(200, {
+          customers: slice,
+          total: all.length
+        });
       } catch (err: any) {
-        await ctx.json(500, { error: err.message || 'Failed to fetch customers' });
+        await ctx.json(500, { error: err.message || "Failed to fetch customers" });
       }
     }
   },
@@ -875,15 +932,50 @@ export const braintreeRoutes: Routes = {
     }
   },
 
-  /* ─────────────  SUB-MERCHANTS  ───────────── */
-  "/create-submerchant": {
+  "/get-submerchant": {
     POST: async (ctx: Context) => {
       try {
-        const data = await ctx.body();
-        const subMerchantAccount = await createSubmerchant(data);
-        await ctx.json(200, { success: true, subMerchantAccount });
+        const { merchantAccountId } = await ctx.body();
+        const subMerchant = await getSubmerchant(merchantAccountId);
+        await ctx.json(200, { subMerchant });
+      } catch {
+        await ctx.json(404, { error: "Submerchant not found" });
+      }
+    }
+  },
+
+  /* ─────────────  SUB-MERCHANT UPSERT  ───────────── */
+  "/upsert-submerchant": {
+    POST: async (ctx: Context) => {
+      try {
+        const body = await ctx.body() as SubmerchantUpsertRequest;                // SubmerchantUpsertRequest
+        const acct = await createOrUpdateSubmerchant(body);
+        await ctx.json(200, { success: true, subMerchantAccount: acct });
       } catch (err: any) {
-        await ctx.json(500, { error: err.message || "Failed to create submerchant" });
+        await ctx.json(500, { error: err.message || "Upsert failed" });
+      }
+    }
+  },
+
+  "/submerchants": {
+    GET: async (ctx: Context) => {
+      try {
+        const submerchants = await getSubmerchantsFromFile();
+        await ctx.json(200, { submerchants });
+      } catch {
+        await ctx.json(500, { error: "Failed to fetch submerchants" });
+      }
+    }
+  },
+
+  "/get-all-merchants": {
+    GET: async (ctx: Context) => {
+      try {
+        const merchants = await getAllMerchants();
+        await ctx.json(200, { merchants });
+      } catch (err: any) {
+        console.error("Failed to fetch all submerchants:", err);
+        await ctx.json(500, { error: "Unable to retrieve submerchant list" });
       }
     }
   },
@@ -898,29 +990,6 @@ export const braintreeRoutes: Routes = {
         await ctx.json(500, {
           error: err.message || "Failed to fetch master merchant account"
         });
-      }
-    }
-  },
-
-  "/get-submerchant": {
-    POST: async (ctx: Context) => {
-      try {
-        const { merchantAccountId } = await ctx.body();
-        const subMerchant = await getSubmerchant(merchantAccountId);
-        await ctx.json(200, { subMerchant });
-      } catch {
-        await ctx.json(404, { error: "Submerchant not found" });
-      }
-    }
-  },
-
-  "/submerchants": {
-    GET: async (ctx: Context) => {
-      try {
-        const submerchants = await getSubmerchantsFromFile();
-        await ctx.json(200, { submerchants });
-      } catch {
-        await ctx.json(500, { error: "Failed to fetch submerchants" });
       }
     }
   },

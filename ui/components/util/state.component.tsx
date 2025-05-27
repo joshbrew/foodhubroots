@@ -4,7 +4,7 @@ import { EventHandler } from './EventHandler';
 export const state = new EventHandler(); // import this anywhere for direct manipulation of state components from script
 
 export class sComponent<
-    P extends { state?: EventHandler; doNotBroadcast?: string[] } = {},
+    P extends { state?: EventHandler; doNotBroadcast?: string[], [key:string]:any } = {},
     S extends Record<string, any> = {}
 > extends Component<P, S> {
     // React-managed state
@@ -22,6 +22,8 @@ export class sComponent<
     // Unique identifier for debugging or DOM-keying
     __unique = `component${Math.floor(Math.random() * 1e15)}`;
     __doNotBroadcast?:string[];
+
+    [key:string]:any;
 
     /**
  * Promise-based setState that relays once to your EventHandler,
@@ -96,7 +98,7 @@ export class sComponent<
         setTimeout(() => {
             const override: Partial<S> = {};
             for (const prop in this.state) {
-                if (props.doNotBroadcast?.includes(prop)) continue;
+                if (this.__doNotBroadcast?.includes(prop)) continue;
                 if (prop in this.__statemgr.data) {
                     override[prop as keyof S] = this.__statemgr.data[prop];
                 }
@@ -105,7 +107,7 @@ export class sComponent<
             if (Object.keys(override).length) {
                 super.setState(override as any);
             }
-        }, 0);
+        }, 0.01);
     }
 
     /**

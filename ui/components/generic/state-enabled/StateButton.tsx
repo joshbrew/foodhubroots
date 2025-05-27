@@ -1,5 +1,5 @@
 import React from 'react'
-import {sComponent} from '../util/state.component'
+import {sComponent} from '../../util/state.component'
 
 export class StateButton extends sComponent<{stateKey:string, style?:CSSStyleDeclaration, className?:string, trueText:string, falseText:string}> {
 

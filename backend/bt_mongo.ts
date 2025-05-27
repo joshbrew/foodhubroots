@@ -22,10 +22,10 @@ import {
   voidTransaction, 
   createCustomer, 
   updateCustomer, 
-  createSubmerchant, 
   splitTransaction, 
   createSubscription, 
-  SubmerchantCreateRequest
+  SubmerchantCreateRequest,
+  createOrUpdateSubmerchant
 } from './braintree';
 import { CustomerCreateRequest } from '../scripts/braintree_datastructures';
 
@@ -260,7 +260,7 @@ export async function restoreInventoryOnCancellation(order: Order): Promise<void
 export async function createSubmerchantAndUpdateSeller(
   data: SubmerchantCreateRequest & {sellerId: string}
 ): Promise<{ subMerchant: any }> {
-  const subMerchant = await retryOperation(() => createSubmerchant(data));
+  const subMerchant = await retryOperation(() => createOrUpdateSubmerchant(data));
   await updateSellerProfileInDB(data.sellerId, { braintree_submerchant_id:subMerchant.id});
   return { subMerchant };
 }
