@@ -1,4 +1,4 @@
-import React, { Component } from "react";
+import React, { Component, FormEvent, ChangeEvent, MouseEvent  } from "react";
 import dropin from "braintree-web-drop-in";
 import { sComponent, state } from "./components/util/state.component";
 import { MerchantAccountResponse } from "../scripts/braintree_datastructures";
@@ -251,7 +251,7 @@ interface IndividualState {
   email:       string;
   phone:       string;
   dateOfBirth: string;  // YYYY-MM-DD
-  ssn:         string;  // last4 or full
+  ssn:         string;  // last4
   address:     AddressState;
 }
 
@@ -272,15 +272,15 @@ interface FundingState {
 }
 
 interface State {
-  id:                  string;
-  idExists:            boolean | null;
-  tosAccepted:         boolean;
-  individual:          IndividualState;
-  useBusiness:         boolean;
-  business:            BusinessState;
-  funding:             FundingState;
-  createdAccount:      any;
-  log:                 string;
+  id:             string;
+  idExists:       boolean | null;
+  tosAccepted:    boolean;
+  individual:     IndividualState;
+  useBusiness:    boolean;
+  business:       BusinessState;
+  funding:        FundingState;
+  createdAccount: any;
+  log:            string;
 }
 
 export class CreateSubMerchant extends Component<{}, State> {
@@ -326,20 +326,27 @@ export class CreateSubMerchant extends Component<{}, State> {
     log: ""
   };
 
-  private handleChange(path: string, value: any) {
+  // handles both inputs & selects & checkboxes by name path
+  handleInputChange = (
+    e: ChangeEvent<HTMLInputElement | HTMLSelectElement>
+  ) => {
+    const { name, type, value, checked } = e.currentTarget as any;
+    const val = type === "checkbox" ? checked : value;
     this.setState((prev) => {
-      const next: any = { ...prev };
+      // deep clone prev
+      const next: any = JSON.parse(JSON.stringify(prev));
       let cur = next as any;
-      const parts = path.split(".");
+      const parts = name.split(".");
       for (let i = 0; i < parts.length - 1; i++) {
         cur = cur[parts[i]];
       }
-      cur[parts[parts.length - 1]] = value;
+      cur[parts[parts.length - 1]] = val;
       return next;
     });
-  }
+  };
 
-  private checkId = async () => {
+  checkId = async (e: MouseEvent) => {
+    e.preventDefault();
     const { id } = this.state;
     if (!id.trim()) {
       this.setState({ idExists: null, log: "Please enter an ID first." });
@@ -352,7 +359,6 @@ export class CreateSubMerchant extends Component<{}, State> {
         body: JSON.stringify({ merchantAccountId: id.trim() })
       });
       if (res.ok) {
-        await res.json(); // we just need to know it exists
         this.setState({ idExists: true, log: `ID "${id}" already exists.` });
       } else {
         this.setState({ idExists: false, log: `ID "${id}" is available.` });
@@ -362,33 +368,39 @@ export class CreateSubMerchant extends Component<{}, State> {
     }
   };
 
-  private handleSubmit = async () => {
-    const { id, individual, business, useBusiness, funding, tosAccepted } = this.state;
-    if (!tosAccepted) {
-      this.setState({ log: "You must accept the terms." });
+  handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    const form = e.currentTarget;
+    if (!form.checkValidity()) {
+      form.reportValidity();
       return;
     }
+
+    const {
+      id,
+      tosAccepted,
+      individual,
+      useBusiness,
+      business,
+      funding
+    } = this.state;
     this.setState({ log: "Creating sub-merchant..." });
 
-    const body: any = {
-      individual,
-      funding,
-      tosAccepted
-    };
-    if (id.trim()) body.id = id.trim();
-    if (useBusiness) body.business = business;
+    const payload: any = { individual, funding, tosAccepted };
+    if (id.trim()) payload.id = id.trim();
+    if (useBusiness) payload.business = business;
 
     try {
       const res = await fetch(`${protocol}://localhost:3000/create-submerchant`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body)
+        body: JSON.stringify(payload)
       });
       const data = await res.json();
       if (data.success && data.subMerchantAccount) {
         this.setState({
           createdAccount: data.subMerchantAccount,
-          log: "Sub-merchant created!"
+          log: "Sub-merchant created successfully!"
         });
       } else {
         this.setState({ log: `Error: ${data.error}` });
@@ -400,182 +412,233 @@ export class CreateSubMerchant extends Component<{}, State> {
 
   render() {
     const {
-      id, idExists, tosAccepted,
-      individual, useBusiness, business,
-      funding, createdAccount, log
+      id,
+      idExists,
+      tosAccepted,
+      individual,
+      useBusiness,
+      business,
+      funding,
+      createdAccount,
+      log
     } = this.state;
 
     return (
-      <div style={{ margin: "10px 0" }}>
+      <form onSubmit={this.handleSubmit} style={{ margin: 20 }}>
         <h2>Create Sub-Merchant</h2>
 
-        {/* ── Override ID & Check ── */}
+        {/* ID + Check */}
         <div>
           <label>
-            Override ID:{" "}
+            Custom ID:
             <input
-              required
+              name="id"
               type="text"
+              required
               value={id}
-              onChange={e => this.handleChange("id", e.target.value)}
+              onChange={this.handleInputChange}
               placeholder="blue_ladders_store"
-              style={{ width: 300 }}
+              style={{ marginLeft: 8 }}
             />
           </label>
           <button onClick={this.checkId} style={{ marginLeft: 8 }}>
             Check ID
           </button>
-          {idExists === true && <span style={{ color: "green", marginLeft: 8 }}>✔️ Exists</span>}
-          {idExists === false && <span style={{ color: "orange", marginLeft: 8 }}>⚠️ Available</span>}
+          {idExists === true && <span style={{ color: "orange", marginLeft: 8 }}>⚠️ Exists</span>}
+          {idExists === false && <span style={{ color: "green", marginLeft: 8 }}>✔️ Available</span>}
         </div>
+
         <hr />
 
-        {/* ── Individual ── */}
-        <h3>Individual Details</h3>
+        {/* Individual */}
+        <h3>Individual</h3>
         <div>
           <input
-            required placeholder="First Name"
+            name="individual.firstName"
+            required
+            placeholder="First Name"
             value={individual.firstName}
-            onChange={e => this.handleChange("individual.firstName", e.target.value)}
-            style={{ marginRight: 8 }}
+            onChange={this.handleInputChange}
           />
           <input
-            required placeholder="Last Name"
+            name="individual.lastName"
+            required
+            placeholder="Last Name"
             value={individual.lastName}
-            onChange={e => this.handleChange("individual.lastName", e.target.value)}
+            onChange={this.handleInputChange}
+            style={{ marginLeft: 8 }}
           />
         </div>
         <div>
           <input
-            required type="email" placeholder="Email"
+            name="individual.email"
+            type="email"
+            required
+            placeholder="Email"
             value={individual.email}
-            onChange={e => this.handleChange("individual.email", e.target.value)}
-            style={{ marginRight: 8, width: 250 }}
+            onChange={this.handleInputChange}
           />
           <input
-            required placeholder="Phone"
+            name="individual.phone"
+            required
+            placeholder="Phone"
             value={individual.phone}
-            onChange={e => this.handleChange("individual.phone", e.target.value)}
+            onChange={this.handleInputChange}
+            style={{ marginLeft: 8 }}
           />
         </div>
         <div>
           <input
-            required type="date"
+            name="individual.dateOfBirth"
+            type="date"
+            required
             value={individual.dateOfBirth}
-            onChange={e => this.handleChange("individual.dateOfBirth", e.target.value)}
-            style={{ marginRight: 8 }}
+            onChange={this.handleInputChange}
           />
           <input
-            required maxLength={4} placeholder="SSN (last4)"
+            name="individual.ssn"
+            required
+            maxLength={4}
+            placeholder="SSN (last4)"
             value={individual.ssn}
-            onChange={e => this.handleChange("individual.ssn", e.target.value)}
+            onChange={this.handleInputChange}
+            style={{ marginLeft: 8 }}
           />
         </div>
         <div>
           <input
-            required placeholder="Street Address"
+            name="individual.address.streetAddress"
+            required
+            placeholder="Street Address"
             value={individual.address.streetAddress}
-            onChange={e => this.handleChange("individual.address.streetAddress", e.target.value)}
-            style={{ width: 400, marginTop: 4 }}
+            onChange={this.handleInputChange}
+            style={{ width: 300 }}
           />
         </div>
         <div>
           <input
-            required placeholder="City"
+            name="individual.address.locality"
+            required
+            placeholder="City"
             value={individual.address.locality}
-            onChange={e => this.handleChange("individual.address.locality", e.target.value)}
-            style={{ marginRight: 8 }}
+            onChange={this.handleInputChange}
           />
           <input
-            required placeholder="Region"
+            name="individual.address.region"
+            required
+            placeholder="Region"
             value={individual.address.region}
-            onChange={e => this.handleChange("individual.address.region", e.target.value)}
-            style={{ marginRight: 8, width: 60 }}
+            onChange={this.handleInputChange}
+            style={{ marginLeft: 8, width: 60 }}
           />
           <input
-            required placeholder="Postal Code"
+            name="individual.address.postalCode"
+            required
+            placeholder="Postal Code"
             value={individual.address.postalCode}
-            onChange={e => this.handleChange("individual.address.postalCode", e.target.value)}
-            style={{ width: 100 }}
+            onChange={this.handleInputChange}
+            style={{ marginLeft: 8, width: 100 }}
           />
         </div>
 
-        {/* ── Business toggle ── */}
         <hr />
+
+        {/* Business toggle */}
         <label>
           <input
-            type="checkbox" checked={useBusiness}
-            onChange={e => this.handleChange("useBusiness", e.target.checked)}
+            name="useBusiness"
+            type="checkbox"
+            checked={useBusiness}
+            onChange={this.handleInputChange}
           />{" "}
           Add Business Details
         </label>
+
         {useBusiness && (
           <>
-            <h3>Business Details</h3>
+            <h3>Business</h3>
             <div>
               <input
-                required placeholder="Legal Name"
+                name="business.legalName"
+                required
+                placeholder="Legal Name"
                 value={business.legalName}
-                onChange={e => this.handleChange("business.legalName", e.target.value)}
-                style={{ marginRight: 8, width: 250 }}
+                onChange={this.handleInputChange}
               />
               <input
-                required placeholder="DBA Name"
+                name="business.dbaName"
+                required
+                placeholder="DBA Name"
                 value={business.dbaName}
-                onChange={e => this.handleChange("business.dbaName", e.target.value)}
+                onChange={this.handleInputChange}
+                style={{ marginLeft: 8 }}
               />
             </div>
             <div>
               <input
-                required placeholder="Tax ID"
+                name="business.taxId"
+                required
+                placeholder="Tax ID"
                 value={business.taxId}
-                onChange={e => this.handleChange("business.taxId", e.target.value)}
+                onChange={this.handleInputChange}
               />
             </div>
             <div>
               <input
-                required placeholder="Street Address"
+                name="business.address.streetAddress"
+                required
+                placeholder="Street Address"
                 value={business.address.streetAddress}
-                onChange={e => this.handleChange("business.address.streetAddress", e.target.value)}
-                style={{ width: 400, marginTop: 4 }}
+                onChange={this.handleInputChange}
+                style={{ width: 300 }}
               />
             </div>
             <div>
               <input
-                required placeholder="City"
+                name="business.address.locality"
+                required
+                placeholder="City"
                 value={business.address.locality}
-                onChange={e => this.handleChange("business.address.locality", e.target.value)}
-                style={{ marginRight: 8 }}
+                onChange={this.handleInputChange}
               />
               <input
-                required placeholder="Region"
+                name="business.address.region"
+                required
+                placeholder="Region"
                 value={business.address.region}
-                onChange={e => this.handleChange("business.address.region", e.target.value)}
-                style={{ marginRight: 8, width: 60 }}
+                onChange={this.handleInputChange}
+                style={{ marginLeft: 8, width: 60 }}
               />
               <input
-                required placeholder="Postal Code"
+                name="business.address.postalCode"
+                required
+                placeholder="Postal Code"
                 value={business.address.postalCode}
-                onChange={e => this.handleChange("business.address.postalCode", e.target.value)}
-                style={{ width: 100 }}
+                onChange={this.handleInputChange}
+                style={{ marginLeft: 8, width: 100 }}
               />
             </div>
           </>
         )}
 
-        {/* ── Funding ── */}
         <hr />
-        <h3>Funding Details</h3>
+
+        {/* Funding */}
+        <h3>Funding</h3>
         <div>
           <input
-            required placeholder="Descriptor"
+            name="funding.descriptor"
+            required
+            placeholder="Descriptor"
             value={funding.descriptor}
-            onChange={e => this.handleChange("funding.descriptor", e.target.value)}
-            style={{ marginRight: 8 }}
+            onChange={this.handleInputChange}
           />
           <select
-            required value={funding.destination}
-            onChange={e => this.handleChange("funding.destination", e.target.value)}
+            name="funding.destination"
+            required
+            value={funding.destination}
+            onChange={this.handleInputChange}
+            style={{ marginLeft: 8 }}
           >
             <option value="bank">Bank</option>
             <option value="mobile">Mobile</option>
@@ -583,54 +646,69 @@ export class CreateSubMerchant extends Component<{}, State> {
         </div>
         <div>
           <input
-            required placeholder="Funding Email"
+            name="funding.email"
+            required
+            placeholder="Funding Email"
             value={funding.email}
-            onChange={e => this.handleChange("funding.email", e.target.value)}
-            style={{ marginRight: 8, width: 250 }}
+            onChange={this.handleInputChange}
           />
           <input
-            required placeholder="Mobile Phone"
+            name="funding.mobilePhone"
+            required
+            placeholder="Mobile Phone"
             value={funding.mobilePhone}
-            onChange={e => this.handleChange("funding.mobilePhone", e.target.value)}
+            onChange={this.handleInputChange}
+            style={{ marginLeft: 8 }}
           />
         </div>
         <div>
           <input
-            required placeholder="Account Number"
+            name="funding.accountNumber"
+            required
+            placeholder="Account Number"
             value={funding.accountNumber}
-            onChange={e => this.handleChange("funding.accountNumber", e.target.value)}
-            style={{ marginRight: 8 }}
+            onChange={this.handleInputChange}
           />
           <input
-            required placeholder="Routing Number"
+            name="funding.routingNumber"
+            required
+            placeholder="Routing Number"
             value={funding.routingNumber}
-            onChange={e => this.handleChange("funding.routingNumber", e.target.value)}
+            onChange={this.handleInputChange}
+            style={{ marginLeft: 8 }}
           />
         </div>
 
-        {/* ── TOS & Submit ── */}
         <hr />
-        <label>
-          <input
-            required type="checkbox" checked={tosAccepted}
-            onChange={e => this.handleChange("tosAccepted", e.target.checked)}
-          />{" "}
-          I accept the <a href="#">Terms of Service</a>
-        </label>
-        <div style={{ marginTop: 10 }}>
-          <button onClick={this.handleSubmit}>Create Sub-Merchant</button>
+
+        {/* TOS */}
+        <div>
+          <label>
+            <input
+              name="tosAccepted"
+              type="checkbox"
+              required
+              checked={tosAccepted}
+              onChange={this.handleInputChange}
+            />{" "}
+            I accept the <a href="#">Terms of Service</a>
+          </label>
         </div>
 
-        {log && <div style={{ marginTop: 8, color: "red" }}>{log}</div>}
+        <button type="submit" style={{ marginTop: 12 }}>
+          Create Sub-Merchant
+        </button>
+
+        {log && <div style={{ marginTop: 12, color: "red" }}>{log}</div>}
 
         {createdAccount && (
           <pre
             style={{
               background: "#f0f0f0",
-              padding: "10px",
-              borderRadius: "4px",
-              marginTop: "10px",
-              maxHeight: "300px",
+              padding: 10,
+              borderRadius: 4,
+              marginTop: 12,
+              maxHeight: 200,
               overflow: "auto",
               whiteSpace: "pre-wrap"
             }}
@@ -638,7 +716,7 @@ export class CreateSubMerchant extends Component<{}, State> {
             {JSON.stringify(createdAccount, null, 2)}
           </pre>
         )}
-      </div>
+      </form>
     );
   }
 }
