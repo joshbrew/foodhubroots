@@ -1,6 +1,7 @@
-import React from "react";
+import React, { Component } from "react";
 import dropin from "braintree-web-drop-in";
 import { sComponent, state } from "./components/util/state.component";
+import { MerchantAccountResponse } from "../scripts/braintree_datastructures";
 
 const protocol = "https";
 
@@ -17,6 +18,12 @@ export class App extends sComponent {
       <div style={{ margin: "20px" }}>
         <h1>Braintree Sandbox Test</h1>
         {/* Pass the dropInInstance prop to CreateCustomer */}
+        <DataListings />
+        <hr />
+        <MasterMerchantInfo />
+        <hr />
+        <FindSubmerchant />
+        <hr />
         <CreateCustomer />
         <hr />
         <RegularCheckout />
@@ -25,7 +32,6 @@ export class App extends sComponent {
         <hr />
         <TransactionWithSplit />
         <hr />
-        <DataListings />
       </div>
     );
   }
@@ -58,11 +64,11 @@ export class CreateCustomer extends sComponent<{}, {
   async componentDidMount() {
     try {
       // 1) fetch the token
-      if(!this.state.clientToken) {
+      if (!this.state.clientToken) {
         console.log("CreateCustomer Component getting client token")
         const res = await fetch(`${protocol}://localhost:3000/client-token`);
         const tokenData = await res.json();
-        await this.setState({ clientToken:tokenData.clientToken });
+        await this.setState({ clientToken: tokenData.clientToken });
         this.initializeDropIn();
       }
     } catch (err: any) {
@@ -71,7 +77,7 @@ export class CreateCustomer extends sComponent<{}, {
     }
   }
 
-  
+
   initializeDropIn() {
     const { clientToken } = this.state;
     if (!clientToken) {
@@ -230,92 +236,412 @@ export class RegularCheckout extends sComponent {
   }
 }
 
-// -------------------------------------------------------------------
-// 3. Create Sub-Merchant Component (as an sComponent)
-// -------------------------------------------------------------------
-export class CreateSubMerchant extends sComponent {
-  state = {
-    subMerchantEmail: "",
-    subMerchantId: "",
-    log: "",
+
+
+interface AddressState {
+  streetAddress: string;
+  locality:      string;
+  region:        string;
+  postalCode:    string;
+}
+
+interface IndividualState {
+  firstName:   string;
+  lastName:    string;
+  email:       string;
+  phone:       string;
+  dateOfBirth: string;  // YYYY-MM-DD
+  ssn:         string;  // last4 or full
+  address:     AddressState;
+}
+
+interface BusinessState {
+  legalName: string;
+  dbaName:   string;
+  taxId:     string;
+  address:   AddressState;
+}
+
+interface FundingState {
+  descriptor:    string;
+  destination:   "bank" | "mobile";
+  email:         string;
+  mobilePhone:   string;
+  accountNumber: string;
+  routingNumber: string;
+}
+
+interface State {
+  id:                  string;
+  idExists:            boolean | null;
+  tosAccepted:         boolean;
+  individual:          IndividualState;
+  useBusiness:         boolean;
+  business:            BusinessState;
+  funding:             FundingState;
+  createdAccount:      any;
+  log:                 string;
+}
+
+export class CreateSubMerchant extends Component<{}, State> {
+  state: State = {
+    id: "",
+    idExists: null,
+    tosAccepted: false,
+    individual: {
+      firstName:   "",
+      lastName:    "",
+      email:       "",
+      phone:       "",
+      dateOfBirth: "",
+      ssn:         "",
+      address: {
+        streetAddress: "",
+        locality:      "",
+        region:        "",
+        postalCode:    ""
+      }
+    },
+    useBusiness: false,
+    business: {
+      legalName: "",
+      dbaName:   "",
+      taxId:     "",
+      address: {
+        streetAddress: "",
+        locality:      "",
+        region:        "",
+        postalCode:    ""
+      }
+    },
+    funding: {
+      descriptor:    "",
+      destination:   "bank",
+      email:         "",
+      mobilePhone:   "",
+      accountNumber: "",
+      routingNumber: ""
+    },
+    createdAccount: null,
+    log: ""
   };
 
-  constructor(props: any) {
-    super(props);
+  private handleChange(path: string, value: any) {
+    this.setState((prev) => {
+      const next: any = { ...prev };
+      let cur = next as any;
+      const parts = path.split(".");
+      for (let i = 0; i < parts.length - 1; i++) {
+        cur = cur[parts[i]];
+      }
+      cur[parts[parts.length - 1]] = value;
+      return next;
+    });
   }
 
-  handleCreateSubMerchant = async () => {
-    if (!this.state.subMerchantEmail) {
-      this.setState({ log: "Please enter an email for the sub-merchant." });
+  private checkId = async () => {
+    const { id } = this.state;
+    if (!id.trim()) {
+      this.setState({ idExists: null, log: "Please enter an ID first." });
       return;
     }
-
     try {
-      const response = await fetch(protocol + "://localhost:3000/create-submerchant", {
+      const res = await fetch(`${protocol}://localhost:3000/get-submerchant`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          individual: {
-            firstName: "Sub", // Example static value; adjust as needed.
-            lastName: "Merchant",
-            email: this.state.subMerchantEmail,
-            phone: "3125551234",
-            dateOfBirth: "10/9/1980",
-            address: {
-              streetAddress: "123 Credibility St.",
-              postalCode: "60606",
-              locality: "Chicago",
-              region: "IL",
-            },
-          },
-          funding: {
-            destination: "bank",
-            routingNumber: "071000013",
-            accountNumber: "1123581321",
-          },
-        }),
+        body: JSON.stringify({ merchantAccountId: id.trim() })
       });
-
-      const data = await response.json();
-      if (data.success) {
-        this.setState({
-          subMerchantId: data.subMerchantAccountId,
-          log: `Sub-merchant created successfully! ID: ${data.subMerchantAccountId}`,
-        });
+      if (res.ok) {
+        await res.json(); // we just need to know it exists
+        this.setState({ idExists: true, log: `ID "${id}" already exists.` });
       } else {
-        this.setState({ log: `Error creating sub-merchant: ${data.error}` });
+        this.setState({ idExists: false, log: `ID "${id}" is available.` });
       }
     } catch (err: any) {
-      console.error("Error creating sub-merchant:", err);
-      this.setState({ log: `Error creating sub-merchant: ${err.message}` });
+      this.setState({ idExists: false, log: `Lookup error: ${err.message}` });
+    }
+  };
+
+  private handleSubmit = async () => {
+    const { id, individual, business, useBusiness, funding, tosAccepted } = this.state;
+    if (!tosAccepted) {
+      this.setState({ log: "You must accept the terms." });
+      return;
+    }
+    this.setState({ log: "Creating sub-merchant..." });
+
+    const body: any = {
+      individual,
+      funding,
+      tosAccepted
+    };
+    if (id.trim()) body.id = id.trim();
+    if (useBusiness) body.business = business;
+
+    try {
+      const res = await fetch(`${protocol}://localhost:3000/create-submerchant`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body)
+      });
+      const data = await res.json();
+      if (data.success && data.subMerchantAccount) {
+        this.setState({
+          createdAccount: data.subMerchantAccount,
+          log: "Sub-merchant created!"
+        });
+      } else {
+        this.setState({ log: `Error: ${data.error}` });
+      }
+    } catch (err: any) {
+      this.setState({ log: `Fetch error: ${err.message}` });
     }
   };
 
   render() {
+    const {
+      id, idExists, tosAccepted,
+      individual, useBusiness, business,
+      funding, createdAccount, log
+    } = this.state;
+
     return (
       <div style={{ margin: "10px 0" }}>
         <h2>Create Sub-Merchant</h2>
-        <p>
-          This simulates creating a new connected/partner merchant who can receive a
-          portion of a transaction split.
-        </p>
-        <label>Sub-Merchant Email:</label>
-        <input
-          type="text"
-          value={this.state.subMerchantEmail}
-          onChange={(e) => this.setState({ subMerchantEmail: e.target.value })}
-          style={{ marginRight: "10px" }}
-        />
-        <button onClick={this.handleCreateSubMerchant}>Create Sub-Merchant</button>
-        <div style={{ margin: "5px 0" }}>
-          Current Sub-Merchant ID: <strong>{this.state.subMerchantId || "None"}</strong>
+
+        {/* ── Override ID & Check ── */}
+        <div>
+          <label>
+            Override ID:{" "}
+            <input
+              required
+              type="text"
+              value={id}
+              onChange={e => this.handleChange("id", e.target.value)}
+              placeholder="blue_ladders_store"
+              style={{ width: 300 }}
+            />
+          </label>
+          <button onClick={this.checkId} style={{ marginLeft: 8 }}>
+            Check ID
+          </button>
+          {idExists === true && <span style={{ color: "green", marginLeft: 8 }}>✔️ Exists</span>}
+          {idExists === false && <span style={{ color: "orange", marginLeft: 8 }}>⚠️ Available</span>}
         </div>
-        <div>{this.state.log}</div>
+        <hr />
+
+        {/* ── Individual ── */}
+        <h3>Individual Details</h3>
+        <div>
+          <input
+            required placeholder="First Name"
+            value={individual.firstName}
+            onChange={e => this.handleChange("individual.firstName", e.target.value)}
+            style={{ marginRight: 8 }}
+          />
+          <input
+            required placeholder="Last Name"
+            value={individual.lastName}
+            onChange={e => this.handleChange("individual.lastName", e.target.value)}
+          />
+        </div>
+        <div>
+          <input
+            required type="email" placeholder="Email"
+            value={individual.email}
+            onChange={e => this.handleChange("individual.email", e.target.value)}
+            style={{ marginRight: 8, width: 250 }}
+          />
+          <input
+            required placeholder="Phone"
+            value={individual.phone}
+            onChange={e => this.handleChange("individual.phone", e.target.value)}
+          />
+        </div>
+        <div>
+          <input
+            required type="date"
+            value={individual.dateOfBirth}
+            onChange={e => this.handleChange("individual.dateOfBirth", e.target.value)}
+            style={{ marginRight: 8 }}
+          />
+          <input
+            required maxLength={4} placeholder="SSN (last4)"
+            value={individual.ssn}
+            onChange={e => this.handleChange("individual.ssn", e.target.value)}
+          />
+        </div>
+        <div>
+          <input
+            required placeholder="Street Address"
+            value={individual.address.streetAddress}
+            onChange={e => this.handleChange("individual.address.streetAddress", e.target.value)}
+            style={{ width: 400, marginTop: 4 }}
+          />
+        </div>
+        <div>
+          <input
+            required placeholder="City"
+            value={individual.address.locality}
+            onChange={e => this.handleChange("individual.address.locality", e.target.value)}
+            style={{ marginRight: 8 }}
+          />
+          <input
+            required placeholder="Region"
+            value={individual.address.region}
+            onChange={e => this.handleChange("individual.address.region", e.target.value)}
+            style={{ marginRight: 8, width: 60 }}
+          />
+          <input
+            required placeholder="Postal Code"
+            value={individual.address.postalCode}
+            onChange={e => this.handleChange("individual.address.postalCode", e.target.value)}
+            style={{ width: 100 }}
+          />
+        </div>
+
+        {/* ── Business toggle ── */}
+        <hr />
+        <label>
+          <input
+            type="checkbox" checked={useBusiness}
+            onChange={e => this.handleChange("useBusiness", e.target.checked)}
+          />{" "}
+          Add Business Details
+        </label>
+        {useBusiness && (
+          <>
+            <h3>Business Details</h3>
+            <div>
+              <input
+                required placeholder="Legal Name"
+                value={business.legalName}
+                onChange={e => this.handleChange("business.legalName", e.target.value)}
+                style={{ marginRight: 8, width: 250 }}
+              />
+              <input
+                required placeholder="DBA Name"
+                value={business.dbaName}
+                onChange={e => this.handleChange("business.dbaName", e.target.value)}
+              />
+            </div>
+            <div>
+              <input
+                required placeholder="Tax ID"
+                value={business.taxId}
+                onChange={e => this.handleChange("business.taxId", e.target.value)}
+              />
+            </div>
+            <div>
+              <input
+                required placeholder="Street Address"
+                value={business.address.streetAddress}
+                onChange={e => this.handleChange("business.address.streetAddress", e.target.value)}
+                style={{ width: 400, marginTop: 4 }}
+              />
+            </div>
+            <div>
+              <input
+                required placeholder="City"
+                value={business.address.locality}
+                onChange={e => this.handleChange("business.address.locality", e.target.value)}
+                style={{ marginRight: 8 }}
+              />
+              <input
+                required placeholder="Region"
+                value={business.address.region}
+                onChange={e => this.handleChange("business.address.region", e.target.value)}
+                style={{ marginRight: 8, width: 60 }}
+              />
+              <input
+                required placeholder="Postal Code"
+                value={business.address.postalCode}
+                onChange={e => this.handleChange("business.address.postalCode", e.target.value)}
+                style={{ width: 100 }}
+              />
+            </div>
+          </>
+        )}
+
+        {/* ── Funding ── */}
+        <hr />
+        <h3>Funding Details</h3>
+        <div>
+          <input
+            required placeholder="Descriptor"
+            value={funding.descriptor}
+            onChange={e => this.handleChange("funding.descriptor", e.target.value)}
+            style={{ marginRight: 8 }}
+          />
+          <select
+            required value={funding.destination}
+            onChange={e => this.handleChange("funding.destination", e.target.value)}
+          >
+            <option value="bank">Bank</option>
+            <option value="mobile">Mobile</option>
+          </select>
+        </div>
+        <div>
+          <input
+            required placeholder="Funding Email"
+            value={funding.email}
+            onChange={e => this.handleChange("funding.email", e.target.value)}
+            style={{ marginRight: 8, width: 250 }}
+          />
+          <input
+            required placeholder="Mobile Phone"
+            value={funding.mobilePhone}
+            onChange={e => this.handleChange("funding.mobilePhone", e.target.value)}
+          />
+        </div>
+        <div>
+          <input
+            required placeholder="Account Number"
+            value={funding.accountNumber}
+            onChange={e => this.handleChange("funding.accountNumber", e.target.value)}
+            style={{ marginRight: 8 }}
+          />
+          <input
+            required placeholder="Routing Number"
+            value={funding.routingNumber}
+            onChange={e => this.handleChange("funding.routingNumber", e.target.value)}
+          />
+        </div>
+
+        {/* ── TOS & Submit ── */}
+        <hr />
+        <label>
+          <input
+            required type="checkbox" checked={tosAccepted}
+            onChange={e => this.handleChange("tosAccepted", e.target.checked)}
+          />{" "}
+          I accept the <a href="#">Terms of Service</a>
+        </label>
+        <div style={{ marginTop: 10 }}>
+          <button onClick={this.handleSubmit}>Create Sub-Merchant</button>
+        </div>
+
+        {log && <div style={{ marginTop: 8, color: "red" }}>{log}</div>}
+
+        {createdAccount && (
+          <pre
+            style={{
+              background: "#f0f0f0",
+              padding: "10px",
+              borderRadius: "4px",
+              marginTop: "10px",
+              maxHeight: "300px",
+              overflow: "auto",
+              whiteSpace: "pre-wrap"
+            }}
+          >
+            {JSON.stringify(createdAccount, null, 2)}
+          </pre>
+        )}
       </div>
     );
   }
 }
-
 // -------------------------------------------------------------------
 // 4. Transaction with Split Component (as an sComponent)
 // -------------------------------------------------------------------
@@ -418,9 +744,9 @@ export class DataListings extends sComponent<{}, DLState> {
     custEmail: ""
   };
 
-  private buildQuery(params: Record<string,string>) {
+  private buildQuery(params: Record<string, string>) {
     const qs = new URLSearchParams();
-    Object.entries(params).forEach(([k,v]) => {
+    Object.entries(params).forEach(([k, v]) => {
       if (v) qs.set(k, v);
     });
     const str = qs.toString();
@@ -430,8 +756,8 @@ export class DataListings extends sComponent<{}, DLState> {
   handleFetchTransactions = async () => {
     const q = this.buildQuery({
       startDate: this.state.txStartDate,
-      endDate:   this.state.txEndDate,
-      status:    this.state.txStatus
+      endDate: this.state.txEndDate,
+      status: this.state.txStatus
     });
     try {
       const res = await fetch(`${protocol}://localhost:3000/transactions${q}`);
@@ -554,13 +880,13 @@ export class DataListings extends sComponent<{}, DLState> {
           <tbody>
             {transactions.length
               ? transactions.map((tx, i) => (
-                  <tr key={i}>
-                    <td>{tx.id}</td>
-                    <td>{tx.status}</td>
-                    <td>{tx.amount}</td>
-                    <td>{tx.createdAt ? new Date(tx.createdAt).toLocaleString() : ""}</td>
-                  </tr>
-                ))
+                <tr key={i}>
+                  <td>{tx.id}</td>
+                  <td>{tx.status}</td>
+                  <td>{tx.amount}</td>
+                  <td>{tx.createdAt ? new Date(tx.createdAt).toLocaleString() : ""}</td>
+                </tr>
+              ))
               : (
                 <tr>
                   <td colSpan={4}>No transactions found</td>
@@ -581,11 +907,11 @@ export class DataListings extends sComponent<{}, DLState> {
           <tbody>
             {customers.length
               ? customers.map((c, i) => (
-                  <tr key={i}>
-                    <td>{c.id}</td>
-                    <td>{c.email}</td>
-                  </tr>
-                ))
+                <tr key={i}>
+                  <td>{c.id}</td>
+                  <td>{c.email}</td>
+                </tr>
+              ))
               : (
                 <tr>
                   <td colSpan={2}>No customers found</td>
@@ -606,11 +932,11 @@ export class DataListings extends sComponent<{}, DLState> {
           <tbody>
             {submerchants.length
               ? submerchants.map((sub, i) => (
-                  <tr key={i}>
-                    <td>{sub.id || sub.merchantAccount?.id}</td>
-                    <td>{sub.status || sub.merchantAccount?.status || "N/A"}</td>
-                  </tr>
-                ))
+                <tr key={i}>
+                  <td>{sub.id || sub.merchantAccount?.id}</td>
+                  <td>{sub.status || sub.merchantAccount?.status || "N/A"}</td>
+                </tr>
+              ))
               : (
                 <tr>
                   <td colSpan={2}>No submerchants found</td>
@@ -620,6 +946,151 @@ export class DataListings extends sComponent<{}, DLState> {
         </table>
 
         <div style={{ marginTop: "1em", fontStyle: "italic" }}>{log}</div>
+      </div>
+    );
+  }
+}
+
+
+
+interface MasterMerchantState {
+  account: MerchantAccountResponse | null;
+  log: string;
+}
+
+export class MasterMerchantInfo extends sComponent<{}, MasterMerchantState> {
+  state: MasterMerchantState = {
+    account: null,
+    log: ""
+  };
+
+  async componentDidMount() {
+    try {
+      const res = await fetch(`${protocol}://localhost:3000/master-merchant`);
+      const data = await res.json();
+      if (data.account) {
+        this.setState({ account: data.account });
+      } else {
+        this.setState({ log: `Error: ${data.error || "No account returned"}` });
+      }
+    } catch (err: any) {
+      this.setState({ log: `Fetch error: ${err.message}` });
+    }
+  }
+
+  render() {
+    const { account, log } = this.state;
+
+    return (
+      <div style={{ margin: "10px 0" }}>
+        <h2>Master Merchant Info</h2>
+        {account ? (
+          <pre
+            style={{
+              background: "#f4f4f4",
+              padding: "10px",
+              borderRadius: "4px",
+              maxHeight: "400px",
+              overflow: "auto",
+              whiteSpace: "pre-wrap"
+            }}
+          >
+            {JSON.stringify(account, null, 2)}
+          </pre>
+        ) : (
+          <p>Loading master merchant data…</p>
+        )}
+        {log && <div style={{ color: "red" }}>{log}</div>}
+      </div>
+    );
+  }
+}
+
+
+
+interface FindSubmerchantState {
+  merchantAccountId: string;
+  subMerchantAccount: MerchantAccountResponse | null;
+  subMerchantLog: string;
+}
+
+export class FindSubmerchant extends sComponent<{}, FindSubmerchantState> {
+  state: FindSubmerchantState = {
+    merchantAccountId: "",
+    subMerchantAccount: null,
+    subMerchantLog: ""
+  };
+
+  handleLookup = async () => {
+    const { merchantAccountId } = this.state;
+    if (!merchantAccountId.trim()) {
+      this.setState({ subMerchantLog: "Please enter an account ID." });
+      return;
+    }
+
+    try {
+      const res = await fetch(
+        `${protocol}://localhost:3000/get-submerchant`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ merchantAccountId })
+        }
+      );
+      const data = await res.json();
+      if (res.ok && data.subMerchant) {
+        this.setState({ subMerchantAccount: data.subMerchant, subMerchantLog: "" });
+      } else {
+        this.setState({
+          subMerchantAccount: null,
+          subMerchantLog: data.error || "Submerchant not found"
+        });
+      }
+    } catch (err: any) {
+      this.setState({ subMerchantAccount: null, subMerchantLog: err.message });
+    }
+  };
+
+  render() {
+    const { merchantAccountId, subMerchantAccount, subMerchantLog: log } = this.state;
+
+    return (
+      <div style={{ margin: "10px 0" }}>
+        <h2>Find Submerchant by ID</h2>
+        <div>
+          <input
+            type="text"
+            placeholder="Enter merchant account ID"
+            value={merchantAccountId}
+            onChange={(e) =>
+              this.setState({ merchantAccountId: e.target.value })
+            }
+            style={{ marginRight: "10px", width: "300px" }}
+          />
+          <button onClick={this.handleLookup}>Lookup</button>
+        </div>
+
+        {log && (
+          <div style={{ marginTop: "8px", color: "red" }}>
+            {log}
+          </div>
+        )}
+
+        {subMerchantAccount && (
+          <pre
+            style={{
+              background: "#fafafa",
+              padding: "10px",
+              borderRadius: "4px",
+              maxHeight: "300px",
+              overflow: "auto",
+              whiteSpace: "pre-wrap",
+              marginTop: "10px"
+            }}
+          >
+            {JSON.stringify(subMerchantAccount, null, 2)}
+          </pre>
+        )}
       </div>
     );
   }

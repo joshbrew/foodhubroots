@@ -97,9 +97,7 @@ export function getEnvVar(name, defaultValue) {
 export function setHeaders(response, statusCode, contentType = 'application/json') {
   response.writeHead(statusCode, {
     'Content-Type': contentType,
-    'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Methods': '*',
-    'Access-Control-Allow-Headers': 'Content-Type'
+    "Access-Control-Allow-Origin": "*"
   });
 }
 
@@ -138,6 +136,20 @@ export function createHttpContext(req, res, params, query) {
 
 // --- HTTP handler export ---
 export function httpHandler(req, res, next, routes) {
+  
+  // — CORS preflight support —
+  if (req.method === 'OPTIONS') {
+    const acrh = req.headers["access-control-request-headers"] || "";
+    res.writeHead(204, {
+      "Access-Control-Allow-Origin":  "*",
+      "Access-Control-Allow-Methods": "GET,POST,OPTIONS,PUT,DELETE",
+      // echo back exactly what the browser asked for
+      "Access-Control-Allow-Headers": Array.isArray(acrh) ? acrh.join(",") : acrh
+    });
+    res.end();
+    return;
+  }
+  
   const url = new URL(req.url, `http://${req.headers.host}`);
   const route = findRoute(url.pathname, routes);
   if (!route) return next();

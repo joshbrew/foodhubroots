@@ -23,23 +23,46 @@ export class sComponent<
     __unique = `component${Math.floor(Math.random() * 1e15)}`;
 
     /**
-     * Promise-based setState that relays once to your EventHandler
-     */
+ * Promise-based setState that relays once to your EventHandler,
+ * and now also supports functional updaters + optional callbacks.
+ */
     //@ts-ignore
     setState(
-        partialState: Partial<S>,
+        partialState:
+            | Partial<S>
+            | ((prevState: Readonly<S>) => Partial<S>),
         callback?: () => void
     ): Promise<void> {
-        return new Promise(resolve => {
-            super.setState(partialState as any, () => {
-                // record which keys were updated
-                this.__updated = Object.keys(partialState);
-                // relay the entire object to EventHandler in one call
-                this.__statemgr.setState(partialState);
-                // user callback
-                if (callback) callback();
-                resolve();
-            });
+        return new Promise((resolve) => {
+            // detect functional updater
+            const isFn = typeof partialState === "function";
+            if (isFn) {
+                super.setState(
+                    (prevState: Readonly<S>) => {
+                        const computed = (partialState as Function)(prevState) as Partial<S>;
+                        // record keys updated
+                        this.__updated = Object.keys(computed);
+                        // push to your global EventHandler
+                        this.__statemgr.setState(computed);
+                        return computed as any; // feed back into React
+                    },
+                    () => {
+                        if (callback) callback();
+                        resolve();
+                    }
+                );
+            } else {
+                // original path for object partials
+                super.setState(
+                    partialState as S,
+                    () => {
+                        this.__updated = Object.keys(partialState);
+                        this.__statemgr.setState(partialState as S);
+                        if (callback) callback();
+                        resolve();
+                    }
+                );
+            }
         });
     }
 

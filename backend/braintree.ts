@@ -199,6 +199,56 @@ export async function updateCustomer(data: {
   }
 }
 
+
+/** Street address details */
+export interface AddressInput {
+  streetAddress: string;
+  locality:      string;
+  region:        string;
+  postalCode:    string;
+}
+
+/** Individual (owner) details */
+export interface IndividualInput {
+  firstName:   string;
+  lastName:    string;
+  email:       string;
+  phone:       string;
+  dateOfBirth: string;  // YYYY-MM-DD
+  ssn:         string;  // last-4 or full
+  address:     AddressInput;
+}
+
+/** Business (DBA) details */
+export interface BusinessInput {
+  legalName: string;
+  dbaName:   string;
+  taxId:     string;
+  address:   AddressInput;
+}
+
+/** Funding instructions for payouts */
+export interface FundingInput {
+  descriptor:    string;
+  destination:   "bank" | "mobile"; 
+  email:         string;
+  mobilePhone:   string;
+  accountNumber: string;
+  routingNumber: string;
+}
+
+/** Full request shape for creating a sub-merchant */
+export interface SubmerchantCreateRequest {
+  /** Optional override for the merchant account ID */
+  id?: string;
+  individual:               IndividualInput;
+  business?:                BusinessInput;
+  funding:                  FundingInput;
+  tosAccepted:              boolean;
+  /** If omitted, pulled from process.env.BRAINTREE_MASTER_MERCHANT_ID */
+  masterMerchantAccountId?: string;
+}
+
 /**
  * Creates a submerchant account using provided data.
  *
@@ -209,17 +259,58 @@ export async function updateCustomer(data: {
  * **HTTP Mapping:**  
  * POST `/create-submerchant`
  */
-export async function createSubmerchant(data: {
-  individual: any;
-  funding: any;
-}): Promise<braintree.MerchantAccount | MerchantAccountResponse> {
-  const masterMerchantAccountId = process.env.BRAINTREE_MASTER_MERCHANT_ID!;
-  const result = await btGateway.merchantAccount.create({
-    individual: data.individual,
-    funding: data.funding,
-    tosAccepted: true,
-    masterMerchantAccountId
-  });
+
+export async function createSubmerchant(
+  data: SubmerchantCreateRequest
+): Promise<braintree.MerchantAccount | MerchantAccountResponse> {
+  const request: braintree.MerchantAccountCreateRequest = {
+    individual: {
+      firstName:    data.individual.firstName,
+      lastName:     data.individual.lastName,
+      email:        data.individual.email,
+      phone:        data.individual.phone,
+      dateOfBirth:  data.individual.dateOfBirth,
+      ssn:          data.individual.ssn,
+      address:      {
+        streetAddress: data.individual.address.streetAddress,
+        locality:      data.individual.address.locality,
+        region:        data.individual.address.region,
+        postalCode:    data.individual.address.postalCode,
+      }
+    },
+    funding: {
+      descriptor:    data.funding.descriptor,
+      destination:   data.funding.destination,
+      email:         data.funding.email,
+      mobilePhone:   data.funding.mobilePhone,
+      accountNumber: data.funding.accountNumber,
+      routingNumber: data.funding.routingNumber,
+    },
+    tosAccepted: data.tosAccepted,
+    masterMerchantAccountId:
+      data.masterMerchantAccountId ||
+      process.env.BRAINTREE_MASTER_MERCHANT_ID!,
+
+    // optional overrides:
+    ...(data.id ? { id: data.id } : {}),
+    ...(data.business
+      ? {
+          business: {
+            legalName: data.business.legalName,
+            dbaName:   data.business.dbaName,
+            taxId:     data.business.taxId,
+            address:   {
+              streetAddress: data.business.address.streetAddress,
+              locality:      data.business.address.locality,
+              region:        data.business.address.region,
+              postalCode:    data.business.address.postalCode,
+            }
+          }
+        }
+      : {}),
+  };
+
+  const result = await btGateway.merchantAccount.create(request);
   if (!result.success) {
     throw new Error(result.message);
   }
@@ -423,13 +514,9 @@ export async function getSubmerchantsFromFile(): Promise<(braintree.MerchantAcco
  */
 export async function processWebhook(btSignature: string, btPayload: string): Promise<SubMerchantAccountWebhookNotification | any> {
   return new Promise((resolve, reject) => {
-    btGateway.webhookNotification.parse(btSignature, btPayload,
-      // @ts-ignore
-      (err, webhookNotification) => {
-        if (err) return reject(err);
-        // Additional processing (e.g., logging to a file) can be done here.
-        resolve(webhookNotification);
-      });
+    btGateway.webhookNotification.parse(btSignature, btPayload)
+    .then(resolve)
+    .catch(reject);
   });
 }
 
@@ -591,6 +678,22 @@ export async function getSubscription(subscriptionId: string): Promise<braintree
   return await btGateway.subscription.find(subscriptionId);
 }
 
+
+/**
+ * Retrieves the configured master merchant account.
+ *
+ * Uses the `BRAINTREE_MERCHANT_ID` env var.
+ *
+ * @returns Promise resolving to the master braintree.MerchantAccount
+ */
+export async function getMasterMerchantAccount(): Promise<
+  braintree.MerchantAccount | MerchantAccountResponse
+> {
+  const masterId = process.env.BRAINTREE_MERCHANT_USERNAME!;
+  const merchantAcct = await btGateway.merchantAccount.find(masterId);
+  return merchantAcct;
+}
+
 /* ===================================================================
    HTTP Route Handlers
    ===================================================================
@@ -739,6 +842,20 @@ export const braintreeRoutes: Routes = {
         await ctx.json(200, { success: true, subMerchantAccount });
       } catch (err: any) {
         await ctx.json(500, { error: err.message || "Failed to create submerchant" });
+      }
+    }
+  },
+
+  /* ─────────────  MASTER MERCHANT INFO  ───────────── */
+  "/master-merchant": {
+    GET: async (ctx: Context) => {
+      try {
+        const account = await getMasterMerchantAccount();
+        await ctx.json(200, { account });
+      } catch (err: any) {
+        await ctx.json(500, {
+          error: err.message || "Failed to fetch master merchant account"
+        });
       }
     }
   },
