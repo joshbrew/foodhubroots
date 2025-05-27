@@ -242,7 +242,7 @@ class SubmerchantsTable extends sComponent<{}, {
 
     return (
       <fieldset style={{ marginBottom: 24 }}>
-        <legend><strong>Sub-Merchants</strong></legend>
+        <legend><strong>Merchants</strong></legend>
         <button onClick={this.fetch}>Refresh List</button>
 
         <table border={1} cellPadding={4} style={{ marginTop: 8 }}>
