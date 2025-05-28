@@ -36,7 +36,7 @@ export class App extends sComponent {
         <FindSubmerchant />
         <hr />
         <CustomerForm />
-        <AddPaymentMethod />
+        {/* <AddPaymentMethod /> */}
         <hr />
         <RegularCheckout />
         <hr />

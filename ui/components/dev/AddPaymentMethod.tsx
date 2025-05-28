@@ -129,7 +129,7 @@ export class AddPaymentMethod extends sComponent<{}, PMGlobalState> {
         {/* Drop-in UI */}
         {typeof clientToken === "string" ? (
           <DropInUI
-          key={currentCustomerId || "new"} //triggers re-mounting
+            key={currentCustomerId || "new"} //triggers re-mounting
             containerId="pm-dropin"
             onReady={(inst) => {
               this.dropinInstance = inst;
