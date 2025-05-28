@@ -1,115 +1,63 @@
-/**************************************************************************
- *  Create / Edit / Delete Customer  (sComponent)
- *  ------------------------------------------------
- *  • create-mode   → no `currentCustomerId`
- *  • edit-mode     → `currentCustomerId` present
- *      – fetch once, pre-populate, allow update & delete
- *
- *  Shared keys:
- *     clientToken          ← fetched once, reused everywhere
- *     currentCustomerId    ← “working with this customer”
- *
- *  Local-only:
- *     customerLog, firstName…website, dropinInstance, loadedId,
- *     fetchInFlight (promise guard)
- **************************************************************************/
-
+// CustomerForm.tsx
 import React, { ChangeEvent, FormEvent } from "react";
-import dropin          from "braintree-web-drop-in";
-import { clientUrl,
-         obtainClientToken     
-        }              from "../../../scripts/frontend";
-import { sComponent }  from "../util/state.component";
+import { clientUrl } from "../../../scripts/frontend";
+import { sComponent } from "../util/state.component";
+import { DropInUI } from "./DropInUI";
 
-/*────────── shared slice of global state ──────────*/
 interface CustomerGlobalState {
-  clientToken:        string | null | Promise<string>;
-  currentCustomerId:  string | null;
-  customerLog:        string;      // NOT propagated – see __doNotBroadcast
+  clientToken: string | null | Promise<string>;
+  currentCustomerId: string | null;
+  customerLog: string;
 }
 
-/*────────── sComponent ──────────*/
-export class CustomerForm extends sComponent<{}, CustomerGlobalState>
-{
-  /*────────────────── CONFIG ──────────────────*/
+interface PaymentMethodUpdate {
+  expirationMonth: string;
+  expirationYear: string;
+}
+
+export class CustomerForm extends sComponent<{}, CustomerGlobalState> {
   state: CustomerGlobalState = {
-    clientToken:       null,
+    clientToken: null,
     currentCustomerId: null,
-    customerLog:       ""
+    customerLog: ""
   };
   __doNotBroadcast = ["customerLog"];
 
-  /*────────────────── LOCAL FIELDS ──────────────────*/
-  private dropinInstance: any | null = null;
-
+  // Local fields:
+  private dropinInstance: any = null;
   private firstName = "";
-  private lastName  = "";
-  private email     = "";
-  private company   = "";
-  private phone     = "";
-  private fax       = "";
-  private website   = "";
+  private lastName = "";
+  private email = "";
+  private company = "";
+  private phone = "";
+  private fax = "";
+  private website = "";
 
-  private loadedId      = "";              // which id is hydrated
-  private fetchInFlight : Promise<void> | null = null; // guard
+  private loadedId = "";
+  private fetchInFlight: Promise<void> | null = null;
+
+  // new: vaulted methods + per-token update form state
+  stateVault = {
+    paymentMethods: [] as any[],
+    pmUpdates: {} as Record<string, PaymentMethodUpdate>
+  };
 
   /*────────────────── LIFE-CYCLE ──────────────────*/
-  async componentDidMount() {
-    try {
-      /* deduped helper returns cached string or shared promise */
-      const token = await obtainClientToken();
-      this.setState({ clientToken: token });       // broadcast resolved
-    } catch (e:any) {
-      this.setState({ customerLog: `Token error: ${e.message}` });
-    }
-  }
-
   componentDidUpdate(_: {}, prev: CustomerGlobalState) {
-    /* ── 1) Token turned into a real string → build Drop-in once (create-mode only) */
     if (
-      typeof this.state.clientToken === "string" &&
-      prev.clientToken             !== this.state.clientToken &&
-      !this.state.currentCustomerId &&           // only while creating
-      !this.dropinInstance
-    ) {
-      this.initDropIn();
-    }
-
-    /* ── 2) new customer id broadcast → fetch exactly ONCE          */
-    if (
-      this.state.currentCustomerId &&                    // we HAVE an id
-      this.state.currentCustomerId !== this.loadedId &&  // not loaded yet
-      !this.fetchInFlight                                 // not already fetching
+      this.state.currentCustomerId &&
+      this.state.currentCustomerId !== this.loadedId &&
+      !this.fetchInFlight
     ) {
       this.fetchInFlight = this.fetchCustomer(this.state.currentCustomerId)
-        .finally(()=>{ this.fetchInFlight = null; });
+        .then(() => this.fetchPaymentMethods())
+        .finally(() => { this.fetchInFlight = null; });
     }
   }
 
-  componentWillUnmount() { this.dropinInstance?.teardown?.(); }
-
-  /*────────────────── DROP-IN (create-mode) ──────────────────*/
-  private initDropIn() {
-    if (this.dropinInstance) return;
-    if (typeof this.state.clientToken !== "string") return;
-
-    dropin.create(
-      { authorization: this.state.clientToken, container: "#customer-dropin" },
-      (err, inst) => {
-        if (err) {
-          this.setState({ customerLog: "Drop-in failed to initialise." });
-        } else {
-          this.dropinInstance = inst;
-          this.forceUpdate();
-        }
-      }
-    );
-  }
-
-  /*────────────────── API HELPERS ──────────────────*/
+  /*────────────────── FETCH CUSTOMER ──────────────────*/
   private async fetchCustomer(id: string) {
     try {
-      console.log('fetching customer');
       const r = await fetch(`${clientUrl}/get-customer`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -118,31 +66,145 @@ export class CustomerForm extends sComponent<{}, CustomerGlobalState>
       if (!r.ok) throw new Error("Not found");
       const { customer } = await r.json();
 
-      /* hydrate local fields */
-      this.firstName = customer.firstName  ?? "";
-      this.lastName  = customer.lastName   ?? "";
-      this.email     = customer.email      ?? "";
-      this.company   = customer.company    ?? "";
-      this.phone     = customer.phone      ?? "";
-      this.fax       = customer.fax        ?? "";
-      this.website   = customer.website    ?? "";
+      this.firstName = customer.firstName ?? "";
+      this.lastName = customer.lastName ?? "";
+      this.email = customer.email ?? "";
+      this.company = customer.company ?? "";
+      this.phone = customer.phone ?? "";
+      this.fax = customer.fax ?? "";
+      this.website = customer.website ?? "";
 
-      this.loadedId  = id;
-      /* editing-mode – ensure Drop-in is removed */
-      if (this.dropinInstance) {
-        await this.dropinInstance.teardown();
-        this.dropinInstance = null;
-      }
+      this.loadedId = id;
       this.forceUpdate();
-    } catch (e:any) {
+    } catch (e: any) {
       this.setState({ customerLog: `Fetch error: ${e.message}` });
     }
   }
 
+  /*────────────────── TEXT HANDLER ──────────────────*/
+  private txt = (field: keyof this) => (e: ChangeEvent<HTMLInputElement>) => {
+    (this as any)[field] = e.target.value;
+    this.forceUpdate();
+  };
+
+  /*────────── Vaulted Methods CRUD ──────────*/
+  private async fetchPaymentMethods() {
+    if (!this.state.currentCustomerId) return;
+    try {
+      const r = await fetch(`${clientUrl}/payment-methods`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ customerId: this.state.currentCustomerId })
+      });
+      const data = await r.json();
+      const methods = data.paymentMethods ?? [];
+      // initialize update-form state for cards
+      const pmUpdates: Record<string, PaymentMethodUpdate> = {};
+      methods.forEach((pm: any) => {
+        if (pm.expirationMonth) {
+          pmUpdates[pm.token] = {
+            expirationMonth: pm.expirationMonth,
+            expirationYear: pm.expirationYear
+          };
+        }
+      });
+      this.stateVault = { paymentMethods: methods, pmUpdates };
+      this.forceUpdate();
+    } catch (e: any) {
+      this.setState({ customerLog: `Fetch methods error: ${e.message}` });
+    }
+  }
+
+  private async deletePaymentMethod(token: string) {
+    try {
+      await fetch(`${clientUrl}/delete-payment-method`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token })
+      });
+      this.fetchPaymentMethods();
+    } catch (e: any) {
+      this.setState({ customerLog: `Delete error: ${e.message}` });
+    }
+  }
+
+  private async updatePaymentMethod(token: string) {
+    // pull the two fields out of your pmUpdates
+    const upd = this.stateVault.pmUpdates[token];
+    if (!upd) return;
+
+    const { expirationMonth, expirationYear } = upd;
+    // require both
+    if (!expirationMonth || !expirationYear) {
+      return this.setState({ customerLog: "Please enter both month & year." });
+    }
+
+    // build a single expirationDate string
+    const expirationDate = `${expirationMonth}/${expirationYear}`;
+
+    try {
+      const r = await fetch(`${clientUrl}/update-payment-method`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token, expirationDate })
+      });
+      const res = await r.json();
+      if (res.success) {
+        this.setState({ customerLog: "Payment method updated!" });
+        await this.fetchPaymentMethods();
+      } else {
+        this.setState({ customerLog: `Error: ${res.error}` });
+      }
+    } catch (e: any) {
+      this.setState({ customerLog: `Error: ${e.message}` });
+    }
+  }
+
+  private handlePMUpdateChange =
+    (token: string, field: keyof PaymentMethodUpdate) =>
+      (e: ChangeEvent<HTMLInputElement>) => {
+        const v = e.target.value;
+        this.stateVault.pmUpdates[token] = {
+          ...this.stateVault.pmUpdates[token],
+          [field]: v
+        };
+        this.forceUpdate();
+      };
+
+  /** 
+* Look at the shape of `pm` and return a type + label. 
+*/
+  private describePM(pm: any): { kind: string; label: string } {
+    if ("last4" in pm && "cardType" in pm) {
+      // Credit Card
+      return {
+        kind: "Credit Card",
+        label: `${pm.cardType} ending in ${pm.last4}`,
+      };
+    } else if ("email" in pm && "payerId" in pm) {
+      // PayPal
+      return {
+        kind: "PayPal Account",
+        label: pm.email,
+      };
+    } else if ("username" in pm) {
+      // Venmo
+      return {
+        kind: "Venmo Account",
+        label: pm.username,
+      };
+    }
+    // fallback
+    return {
+      kind: "Payment Method",
+      label: pm.token,
+    };
+  }
+
+  /*────────────────── DELETE CUSTOMER ──────────────────*/
   private async deleteCustomer() {
     if (!this.state.currentCustomerId) return;
     if (!confirm("Delete this customer permanently?")) return;
-
     try {
       const r = await fetch(`${clientUrl}/delete-customer`, {
         method: "POST",
@@ -151,18 +213,14 @@ export class CustomerForm extends sComponent<{}, CustomerGlobalState>
       });
       if (!r.ok) throw new Error("Delete failed");
 
-      /* clear global id, reset local form, re-enable create mode */
       this.setState({
         currentCustomerId: null,
-        customerLog:       "Customer deleted."
+        customerLog: "Customer deleted."
       });
-
-      this.loadedId  = "";
-      this.firstName = this.lastName = this.email =
-      this.company  = this.phone    = this.fax   = this.website = "";
-
-      this.initDropIn();                     // bring back Drop-in
-    } catch (e:any) {
+      this.loadedId = "";
+      this.dropinInstance = null;
+      this.forceUpdate();
+    } catch (e: any) {
       this.setState({ customerLog: `Error: ${e.message}` });
     }
   }
@@ -170,51 +228,49 @@ export class CustomerForm extends sComponent<{}, CustomerGlobalState>
   /*────────────────── SUBMIT (create OR update) ──────────────────*/
   private handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
-
     const base = {
-      firstName: this.firstName, lastName: this.lastName, email: this.email,
-      company:   this.company,   phone:    this.phone,    fax:   this.fax,
-      website:   this.website
+      firstName: this.firstName,
+      lastName: this.lastName,
+      email: this.email,
+      company: this.company,
+      phone: this.phone,
+      fax: this.fax,
+      website: this.website
     };
 
-    /* ── CREATE ───────────────────────────────────────*/
     if (!this.state.currentCustomerId) {
       if (!this.dropinInstance)
         return this.setState({ customerLog: "Drop-in not ready." });
-
       this.setState({ customerLog: "Creating…" });
-
       try {
         const { nonce } = await this.dropinInstance.requestPaymentMethod();
-        const r   = await fetch(`${clientUrl}/create-customer`, {
-          method: "POST", headers: { "Content-Type": "application/json" },
+        const r = await fetch(`${clientUrl}/create-customer`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ ...base, paymentMethodNonce: nonce })
         });
         const res = await r.json();
-
         if (res.success) {
           this.setState({
             currentCustomerId: res.customerId,
-            customerLog:       "Customer created!"
+            customerLog: "Customer created!"
           });
-          /* teardown drop-in now that we are in edit-mode */
           await this.dropinInstance.teardown();
           this.dropinInstance = null;
         } else {
           this.setState({ customerLog: `Error: ${res.error}` });
         }
-      } catch (err:any) {
+      } catch (err: any) {
         this.setState({ customerLog: `Net error: ${err.message}` });
       }
       return;
     }
 
-    /* ── UPDATE ───────────────────────────────────────*/
     this.setState({ customerLog: "Updating…" });
-
     try {
       const r = await fetch(`${clientUrl}/update-customer`, {
-        method: "POST", headers: { "Content-Type": "application/json" },
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ customerId: this.state.currentCustomerId, ...base })
       });
       const res = await r.json();
@@ -223,75 +279,176 @@ export class CustomerForm extends sComponent<{}, CustomerGlobalState>
       } else {
         this.setState({ customerLog: `Error: ${res.error}` });
       }
-    } catch (err:any) {
+    } catch (err: any) {
       this.setState({ customerLog: `Net error: ${err.message}` });
     }
   };
 
-  /*────────────────── helpers ──────────────────*/
-  private txt =
-    (field: keyof this) =>
-      (e: ChangeEvent<HTMLInputElement>) =>
-        { (this as any)[field] = e.target.value; this.forceUpdate(); };
-
   /*────────────────── RENDER ──────────────────*/
   render() {
-    const editing = !!this.state.currentCustomerId;
+    const { currentCustomerId, customerLog, clientToken } = this.state;
+    const editing = !!currentCustomerId;
+    const { paymentMethods, pmUpdates } = this.stateVault;
 
     return (
       <form onSubmit={this.handleSubmit} style={{ margin: 20, maxWidth: 480 }}>
         <h2>{editing ? "Edit Customer" : "Create Customer"}</h2>
 
-        <label>First&nbsp;Name:
-          <input required value={this.firstName} onChange={this.txt("firstName")} />
-        </label><br/>
-        <label>Last&nbsp;Name:
-          <input required value={this.lastName} onChange={this.txt("lastName")} />
-        </label><br/>
-        <label>Email:
-          <input type="email" required value={this.email} onChange={this.txt("email")} />
-        </label><br/>
-        <label>Company:
-          <input value={this.company} onChange={this.txt("company")} />
-        </label><br/>
-        <label>Phone:
-          <input value={this.phone} onChange={this.txt("phone")} />
-        </label><br/>
-        <label>Fax:
-          <input value={this.fax} onChange={this.txt("fax")} />
-        </label><br/>
-        <label>Website:
-          <input type="url" value={this.website} onChange={this.txt("website")} />
+        <label>
+          First&nbsp;Name:&nbsp;
+          <input
+            required
+            value={this.firstName}
+            onChange={this.txt("firstName")}
+          />
+        </label>
+        <br />
+        <label>
+          Last&nbsp;Name:&nbsp;
+          <input
+            required
+            value={this.lastName}
+            onChange={this.txt("lastName")}
+          />
+        </label>
+        <br />
+        <label>
+          Email:&nbsp;
+          <input
+            type="email"
+            required
+            value={this.email}
+            onChange={this.txt("email")}
+          />
+        </label>
+        <br />
+        <label>
+          Company:&nbsp;
+          <input
+            value={this.company}
+            onChange={this.txt("company")}
+          />
+        </label>
+        <br />
+        <label>
+          Phone:&nbsp;
+          <input
+            value={this.phone}
+            onChange={this.txt("phone")}
+          />
+        </label>
+        <br />
+        <label>
+          Fax:&nbsp;
+          <input
+            value={this.fax}
+            onChange={this.txt("fax")}
+          />
+        </label>
+        <br />
+        <label>
+          Website:&nbsp;
+          <input
+            value={this.website}
+            onChange={this.txt("website")}
+          />
         </label>
 
         {!editing && (
           <>
-            <hr/>
-            <div id="customer-dropin" style={{ margin:"10px 0" }} />
+            <hr />
+            <DropInUI
+              key={currentCustomerId || "new"}
+              options={{
+                card: true,
+                paypal: { flow: "vault", commit: true },
+                paypalCredit: { flow: "vault", commit: true },
+                paymentOptionPriority: ["paypal", "paypalCredit", "card"]
+              }}
+              onReady={inst => { this.dropinInstance = inst; this.forceUpdate(); }}
+              onError={msg => this.setState({ customerLog: msg })}
+            />
           </>
         )}
 
-        <hr/>
+        <hr />
         <button type="submit" disabled={!editing && !this.dropinInstance}>
           {editing ? "Save Changes" : "Create Customer"}
         </button>
-
         {editing && (
           <button
             type="button"
-            onClick={()=>this.deleteCustomer()}
-            style={{ marginLeft:12,color:"crimson" }}>
+            onClick={() => this.deleteCustomer()}
+            style={{ marginLeft: 12, color: "crimson" }}
+          >
             Delete Customer
           </button>
         )}
 
+        {editing && (
+          <>
+            <h3 style={{ marginTop: 20 }}>Payment Methods</h3>
+            {paymentMethods.length ? paymentMethods.map(pm => {
+              const { kind, label } = this.describePM(pm);
+
+              return (
+                <div key={pm.token} style={{ border: "1px solid #ddd", padding: 8, marginBottom: 8 }}>
+                  {/* Show a single “Method: Kind — label” line */}
+                  <p>
+                    <strong>Method:</strong> {kind} — {label}<br />
+                    <strong>Token:</strong> {pm.token}
+                  </p>
+
+                  {/* only cards have exp fields */}
+                  {"expirationMonth" in pm && (
+                    <>
+                      <label>
+                        Exp Month:&nbsp;
+                        <input
+                          value={this.stateVault.pmUpdates[pm.token]?.expirationMonth || ""}
+                          onChange={this.handlePMUpdateChange(pm.token, "expirationMonth")}
+                          style={{ width: 50 }}
+                        />
+                      </label>
+                      <label style={{ marginLeft: 8 }}>
+                        Exp Year:&nbsp;
+                        <input
+                          value={this.stateVault.pmUpdates[pm.token]?.expirationYear || ""}
+                          onChange={this.handlePMUpdateChange(pm.token, "expirationYear")}
+                          style={{ width: 60 }}
+                        />
+                      </label>
+                      <button
+                        onClick={() => this.updatePaymentMethod(pm.token)}
+                        style={{ marginLeft: 8 }}
+                      >
+                        Update
+                      </button>
+                    </>
+                  )}
+
+                  <button
+                    onClick={() => this.deletePaymentMethod(pm.token)}
+                    style={{ marginLeft: 8, color: "crimson" }}
+                  >
+                    Delete
+                  </button>
+                </div>
+              );
+            }) : (
+              <p>No vaulted payment methods</p>
+            )}
+          </>
+        )}
+
         {this.state.currentCustomerId && (
-          <p style={{ marginTop:10 }}>
-            Customer&nbsp;ID:&nbsp;<strong>{this.state.currentCustomerId}</strong>
+          <p style={{ marginTop: 10 }}>
+            Customer&nbsp;ID:&nbsp;
+            <strong>{currentCustomerId}</strong>
           </p>
         )}
-        {this.state.customerLog && (
-          <p style={{ color:"red", marginTop:10 }}>{this.state.customerLog}</p>
+        {customerLog && (
+          <p style={{ color: "red", marginTop: 10 }}>{customerLog}</p>
         )}
       </form>
     );

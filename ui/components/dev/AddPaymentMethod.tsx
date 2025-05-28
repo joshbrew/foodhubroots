@@ -1,32 +1,28 @@
+// AddPaymentMethod.tsx
 import React, { ChangeEvent, FormEvent } from "react";
 import { clientUrl, obtainClientToken } from "../../../scripts/frontend";
 import { sComponent } from "../util/state.component";
-import dropin from "braintree-web-drop-in";
-
+import { DropInUI } from "./DropInUI";  // <-- our new DropInUI sComponent
 
 interface BillingAddress {
-  streetAddress: string;
-  extendedAddress: string;
-  locality: string;
-  region: string;
-  postalCode: string;
+  streetAddress:     string;
+  extendedAddress:   string;
+  locality:          string;
+  region:            string;
+  postalCode:        string;
   countryCodeAlpha2: string;
 }
 
 /*────────────────────────────────────────────
-  SHARED STATE  (anything you want visible
-  in every other sComponent goes in here)
+  SHARED STATE  (visible in every other sComponent)
 ────────────────────────────────────────────*/
 interface PMGlobalState {
-  /** shared: fetched once – used by any Drop-in */
-  clientToken: string | null | Promise<string>;
-  /** shared: the customer we are currently working with */
-  currentCustomerId: string | null;
-
-  /** this key name is unique, so it will NOT collide with
-      another component’s log. (Every sComponent gets every
-      update, but unused keys are simply ignored.)            */
-  pmLog: string;
+  /** fetched once – used by any Drop-in */
+  clientToken:        string | null | Promise<string>;
+  /** the customer we are currently working with */
+  currentCustomerId:  string | null;
+  /** unique log key for this component */
+  pmLog:              string;
 }
 
 /*────────────────────────────────────────────
@@ -34,26 +30,25 @@ interface PMGlobalState {
 ────────────────────────────────────────────*/
 export class AddPaymentMethod extends sComponent<{}, PMGlobalState> {
   state: PMGlobalState = {
-    clientToken: null,
+    clientToken:       null,
     currentCustomerId: null,
-    pmLog: ""
+    pmLog:             ""
   };
-
   __doNotBroadcast = ['pmLog'];
 
-  /* local-only pieces that shouldn’t propagate */
+  /* local-only pieces */
   private dropinInstance: any | null = null;
   private newToken: string | null = null;
   private billing: BillingAddress = {
-    streetAddress: "",
-    extendedAddress: "",
-    locality: "",
-    region: "",
-    postalCode: "",
+    streetAddress:     "",
+    extendedAddress:   "",
+    locality:          "",
+    region:            "",
+    postalCode:        "",
     countryCodeAlpha2: ""
   };
 
-  /*──────── LIFECYCLE ────────*/
+  /*────────────────── LIFECYCLE ──────────────────*/
   async componentDidMount() {
     try {
       const token = await obtainClientToken();
@@ -63,51 +58,18 @@ export class AddPaymentMethod extends sComponent<{}, PMGlobalState> {
     }
   }
 
-  /* kick Drop-in once token is ready */
-  componentDidUpdate(_: {}, prev: PMGlobalState) {
-    if (
-      typeof this.state.clientToken === "string" &&
-      prev.clientToken !== this.state.clientToken
-    ) {
-      this.initDropIn();
-    }
-  }
-
-  componentWillUnmount() {
-    this.dropinInstance?.teardown?.();
-  }
-
-  /*──────── Drop-in ────────*/
-  private initDropIn() {
-    if (this.dropinInstance) return;
-    if (typeof this.state.clientToken !== "string") return;
-
-    dropin.create(
-      { authorization: this.state.clientToken, container: "#pm-dropin" },
-      (err, inst) => {
-        if (err) {
-          this.setState({ pmLog: "Drop-in init failed" });
-        } else {
-          this.dropinInstance = inst;
-          this.forceUpdate();
-        }
-      }
-    );
-  }
-
-  /*──────── HANDLERS ────────*/
+  /*────────────────── HANDLERS ──────────────────*/
   private handleText =
     (field: keyof BillingAddress | "currentCustomerId") =>
-      (e: ChangeEvent<HTMLInputElement>) => {
-        const value = e.target.value;
-        if (field === "currentCustomerId") {
-          /* broadcast customer selection */
-          this.setState({ currentCustomerId: value });
-        } else {
-          this.billing[field] = value;
-          this.forceUpdate();
-        }
-      };
+    (e: ChangeEvent<HTMLInputElement>) => {
+      const value = e.target.value;
+      if (field === "currentCustomerId") {
+        this.setState({ currentCustomerId: value });
+      } else {
+        this.billing[field] = value as string;
+        this.forceUpdate();
+      }
+    };
 
   private handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -124,10 +86,10 @@ export class AddPaymentMethod extends sComponent<{}, PMGlobalState> {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          customerId: this.state.currentCustomerId,
+          customerId:         this.state.currentCustomerId,
           paymentMethodNonce: nonce,
-          billingAddress: this.billing,
-          options: { makeDefault: true }
+          billingAddress:     this.billing,
+          options:            { makeDefault: true }
         })
       });
       const data = await res.json();
@@ -142,10 +104,10 @@ export class AddPaymentMethod extends sComponent<{}, PMGlobalState> {
     }
   };
 
-  /*──────── RENDER ────────*/
+  /*────────────────── RENDER ──────────────────*/
   render() {
-    const { currentCustomerId, pmLog } = this.state;
-    const B = this.billing;   // shorthand
+    const { currentCustomerId, pmLog, clientToken } = this.state;
+    const B = this.billing;
 
     return (
       <form onSubmit={this.handleSubmit} style={{ margin: 20 }}>
@@ -163,7 +125,34 @@ export class AddPaymentMethod extends sComponent<{}, PMGlobalState> {
         </label>
 
         <hr />
-        <div id="pm-dropin" style={{ margin: "10px 0" }} />
+
+        {/* Drop-in UI */}
+        {typeof clientToken === "string" ? (
+          <DropInUI
+          key={currentCustomerId || "new"} //triggers re-mounting
+            containerId="pm-dropin"
+            onReady={(inst) => {
+              this.dropinInstance = inst;
+              this.forceUpdate();
+            }}
+            onError={(msg) => this.setState({ pmLog: msg })}
+            options={{
+              card: true,
+              paypal: {
+                flow: "vault",   // vault the PayPal account on Braintree
+                commit: true
+              },
+              paypalCredit: {
+                flow: "vault",
+                commit: true
+              },
+              // you can reorder so PayPal shows first, e.g.:
+              paymentOptionPriority: ["paypal", "paypalCredit", "card"]
+            }}
+          />
+        ) : (
+          <div>Loading payment UI…</div>
+        )}
 
         <h3>Billing Address</h3>
         <input

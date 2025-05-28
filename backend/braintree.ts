@@ -221,46 +221,122 @@ export async function updateCustomer(data: {
 
 
 
+
 /**
- * Creates a new payment method (creditCard or nonce) for a customer.
+ * Creates a new payment method for a customer.
  *
- * Accepts the full CreditCardCreateRequest shape.
+ * This works with any Braintree payment method nonce (card, PayPal, Venmo, etc.)
+ * and will vault it if your Drop-In options include vaulting.
+ *
+ * @param data.customerId          – the Braintree customer ID
+ * @param data.paymentMethodNonce  – the nonce you got from Drop-In
+ * @param data.options             – any PaymentMethodCreateRequest options (e.g. { makeDefault: true })
+ * @returns the vaulted payment method’s token
  */
 export async function createPaymentMethod(
-  data: CreditCardCreateRequest
+  data: {
+    customerId: string;
+    paymentMethodNonce: string;
+    options?: braintree.PaymentMethodCreateRequest["options"];
+  }
 ): Promise<string> {
-  // Build Braintree request:
-  const req: braintree.CreditCardCreateRequest = {
+  const result = await btGateway.paymentMethod.create({
     customerId: data.customerId,
     paymentMethodNonce: data.paymentMethodNonce,
-    token: data.token,
-    number: data.number,
-    cvv: data.cvv,
-    expirationDate: data.expirationDate,
-    expirationMonth: data.expirationMonth,
-    expirationYear: data.expirationYear,
-    cardholderName: data.cardholderName,
-    billingAddress: data.billingAddress && {
-      streetAddress: data.billingAddress.streetAddress,
-      extendedAddress: data.billingAddress.extendedAddress,
-      locality: data.billingAddress.locality,
-      region: data.billingAddress.region,
-      postalCode: data.billingAddress.postalCode,
-      countryCodeAlpha2: data.billingAddress.countryCodeAlpha2,
-      countryCodeAlpha3: data.billingAddress.countryCodeAlpha3,
-      countryCodeNumeric: data.billingAddress.countryCodeNumeric,
-      countryName: data.billingAddress.countryName
-    },
-    billingAddressId: data.billingAddressId,
-    options: data.options
-  };
+    options: data.options,
+  });
 
-  // Create via the creditCard API:
-  const result = await btGateway.creditCard.create(req);
   if (!result.success) {
     throw new Error(result.message);
   }
-  return result.creditCard.token;
+
+  // `result.paymentMethod` may be a CreditCard, PayPalAccount, etc.
+  return result.paymentMethod.token;
+}
+
+
+
+/**
+ * Updates a payment method.
+ *
+ * @param token - The token identifying the payment method.
+ * @param data - An object containing fields to update (e.g., cardholderName, expirationDate).
+ * @returns A Promise that resolves when the update is complete.
+ *
+ * **HTTP Mapping:**  
+ * POST `/update-payment-method`
+ */
+export async function updatePaymentMethod(token: string, data: { cardholderName?: string; expirationDate?: string }): Promise<void> {
+  const result = await btGateway.paymentMethod.update(token, data);
+  if (!result.success) {
+    throw new Error(result.message);
+  }
+}
+
+/**
+ * Deletes a payment method.
+ *
+ * @param token - The token identifying the payment method.
+ * @returns A Promise that resolves when the payment method is deleted.
+ *
+ * **HTTP Mapping:**  
+ * POST `/delete-payment-method`
+ */
+export async function deletePaymentMethod(token: string): Promise<void> {
+  const result = await btGateway.paymentMethod.delete(token);
+  return result;
+}
+
+
+/**
+ * Lists _all_ vaulted payment methods for a given customer.
+ *
+ * @param customerId – the Braintree customer ID
+ * @returns an array of vaulted payment methods (cards, PayPal accounts, etc.)
+ */
+export async function listPaymentMethods(
+  customerId: string
+): Promise<braintree.PaymentMethod[]> {
+  // customer.find() returns creditCards, PayPal accounts, Venmo accounts, etc.
+  const customer = await btGateway.customer.find(customerId);
+  return [
+    // ...(customer.creditCards         ?? []),
+    // ...(customer.paypalAccounts      ?? []),
+    // ...(customer.venmoAccounts       ?? []),
+    // ...(customer.androidPayCards     ?? []),
+    // ...(customer.applePayCards       ?? []),
+    ...(customer.paymentMethods ?? [])
+  ];
+}
+
+
+/**
+ * Retrieves a specific vaulted payment method by token.
+ *
+ * @param token – the payment method token you vaulted earlier
+ * @returns the PaymentMethod (CreditCard|PayPalAccount|…)
+ */
+export async function getPaymentMethod(
+  token: string
+): Promise<braintree.PaymentMethod> {
+  return await btGateway.paymentMethod.find(token);
+}
+
+
+
+
+/**
+ * Shortcut: get the default payment method token for a customer, if any.
+ *
+ * @param customerId – the Braintree customer ID
+ * @returns the default method’s token, or null if none set
+ */
+export async function getDefaultPaymentMethodToken(
+  customerId: string
+): Promise<string | null> {
+  const methods = await listPaymentMethods(customerId);
+  const def = methods.find(m => (m as any).default === true);
+  return def?.token || null;
 }
 
 
@@ -675,37 +751,6 @@ export async function deleteCustomer(customerId: string): Promise<void> {
 
 
 /**
- * Updates a payment method.
- *
- * @param token - The token identifying the payment method.
- * @param data - An object containing fields to update (e.g., cardholderName, expirationDate).
- * @returns A Promise that resolves when the update is complete.
- *
- * **HTTP Mapping:**  
- * POST `/update-payment-method`
- */
-export async function updatePaymentMethod(token: string, data: { cardholderName?: string; expirationDate?: string }): Promise<void> {
-  const result = await btGateway.paymentMethod.update(token, data);
-  if (!result.success) {
-    throw new Error(result.message);
-  }
-}
-
-/**
- * Deletes a payment method.
- *
- * @param token - The token identifying the payment method.
- * @returns A Promise that resolves when the payment method is deleted.
- *
- * **HTTP Mapping:**  
- * POST `/delete-payment-method`
- */
-export async function deletePaymentMethod(token: string): Promise<void> {
-  const result = await btGateway.paymentMethod.delete(token);
-  return result;
-}
-
-/**
  * Creates a subscription for a customer.
  *
  * @param data - An object containing paymentMethodToken, planId, and an optional price.
@@ -855,7 +900,7 @@ export const braintreeRoutes: Routes = {
   },
 
   /* ─────────────  TRANSACTION LOOK-UP  ───────────── */
-  "/transaction": {
+  "/get-transaction": {
     POST: async (ctx: Context) => {
       try {
         const { transactionId } = await ctx.body();
@@ -1033,10 +1078,23 @@ export const braintreeRoutes: Routes = {
   },
 
   /* ─────────────  PAYMENT METHODS  ───────────── */
+  "/payment-methods": {
+    POST: async (ctx: Context) => {
+      try {
+        const { customerId } = await ctx.body();
+        const paymentMethods = await listPaymentMethods(customerId);
+        await ctx.json(200, { paymentMethods });
+      } catch (err: any) {
+        console.error("Failed to list payment methods:", err);
+        await ctx.json(500, { error: err.message || "Unable to retrieve payment methods" });
+      }
+    }
+  },
+  
   "/create-payment-method": {
     POST: async (ctx: Context) => {
       try {
-        const data = (await ctx.body()) as CreditCardCreateRequest;
+        const data = (await ctx.body()) as any;
         const token = await createPaymentMethod(data);
         await ctx.json(200, { success: true, token });
       } catch (err: any) {

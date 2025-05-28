@@ -26,76 +26,157 @@ const buildQuery = (params: Record<string, string>) => {
  *───────────────────────────────────────────────────────────*/
 type TxStatus = "Authorized" | "SubmittedForSettlement" | "Settled" | string;
 
+
 interface TxState {
   list: any[];
   log: string;
   txStartDate: string;
   txEndDate: string;
   txStatus: TxStatus;
+
+  currentTxId: string | null;    // selected ID
+  currentTx: any | null;         // fetched JSON
 }
 
-class TransactionsTable extends sComponent<{}, TxState> {
-  __doNotBroadcast = ["list", "log", "txStartDate", "txEndDate", "txStatus"];
+export class TransactionsTable extends sComponent<{}, TxState> {
+  __doNotBroadcast = [
+    "list","log","txStartDate","txEndDate","txStatus",
+    // we DO want to broadcast currentTxId to other components
+    // so it is NOT in doNotBroadcast
+    "currentTx"
+  ];
 
   state: TxState = {
     list: [],
     log: "",
     txStartDate: "",
     txEndDate: "",
-    txStatus: ""
+    txStatus: "",
+
+    currentTxId: null,
+    currentTx: null
   };
 
-  private fetch = async () => {
+  private fetchList = async () => {
     const { txStartDate, txEndDate, txStatus } = this.state;
     try {
-      const r = await fetch(`${clientUrl}/transactions${buildQuery({
-        startDate: txStartDate, endDate: txEndDate, status: txStatus
-      })}`);
+      const r   = await fetch(`${clientUrl}/transactions${buildQuery({
+        startDate: txStartDate,
+        endDate:   txEndDate,
+        status:    txStatus
+      })}`, { method: "GET" });
       const res = await r.json();
       if (res.transactions) {
         this.setState({ list: res.transactions, log: "Loaded." });
-      } else { this.setState({ log: res.error || "Error." }); }
+      } else {
+        this.setState({ log: res.error || "Error." });
+      }
+    } catch (e: any) {
+      this.setState({ log: `Fetch error: ${e.message}` });
+    }
+  };
+
+  private selectTransaction = async (id: string) => {
+    // 1) store selected ID
+    this.setState({ currentTxId: id, currentTx: null, log: "" });
+
+    // 2) fetch its JSON
+    try {
+      const r   = await fetch(`${clientUrl}/get-transaction`, {
+        method:  "POST",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify({ transactionId: id })
+      });
+      const res = await r.json();
+      if (res.transaction) {
+        this.setState({ currentTx: res.transaction });
+      } else {
+        this.setState({ log: res.error || "Not found." });
+      }
     } catch (e: any) {
       this.setState({ log: `Fetch error: ${e.message}` });
     }
   };
 
   render() {
-    const { list, log, txStartDate, txEndDate, txStatus } = this.state;
-    return (
-      <fieldset style={{ marginBottom: 24 }}>
-        <legend><strong>Transactions</strong></legend>
+    const {
+      list, log, txStartDate, txEndDate, txStatus,
+      currentTxId, currentTx
+    } = this.state;
 
-        {/* Filters */}
-        <label>Start:
-          <input type="date" value={txStartDate}
-            onChange={e => this.setState({ txStartDate: e.target.value })} />
-        </label>{" "}
-        <label>End:
-          <input type="date" value={txEndDate}
-            onChange={e => this.setState({ txEndDate: e.target.value })} />
-        </label>{" "}
-        <label>Status:
-          <input placeholder="Settled…" value={txStatus}
-            onChange={e => this.setState({ txStatus: e.target.value })} />
-        </label>{" "}
-        <button onClick={this.fetch}>Refresh</button>
+    const table = (
+      <>
+        <div>
+          <label>Start:
+            <input type="date" value={txStartDate}
+              onChange={e => this.setState({ txStartDate: e.target.value })} />
+          </label>{" "}
+          <label>End:
+            <input type="date" value={txEndDate}
+              onChange={e => this.setState({ txEndDate: e.target.value })} />
+          </label>{" "}
+          <label>Status:
+            <input placeholder="Settled…" value={txStatus}
+              onChange={e => this.setState({ txStatus: e.target.value })} />
+          </label>{" "}
+          <button onClick={this.fetchList}>Refresh</button>
+        </div>
 
-        {/* Table */}
-        <table border={1} cellPadding={4} style={{ marginTop: 8 }}>
-          <thead><tr><th>ID</th><th>Status</th><th>Amount</th><th>Created</th></tr></thead>
+        <table border={1} cellPadding={4} style={{ marginTop: 8, width: "100%" }}>
+          <thead>
+            <tr>
+              <th>ID</th><th>Status</th><th>Amount</th><th>Created</th><th/>
+            </tr>
+          </thead>
           <tbody>
-            {list.length
-              ? list.map((t, i) => (
-                <tr key={i}>
-                  <td>{t.id}</td><td>{t.status}</td><td>{t.amount}</td>
-                  <td>{t.createdAt ? new Date(t.createdAt).toLocaleString() : ""}</td>
-                </tr>
-              ))
-              : <tr><td colSpan={4}>No data</td></tr>}
+            {list.length ? list.map((t,i) => (
+              <tr key={i}>
+                <td>{t.id}</td>
+                <td>{t.status}</td>
+                <td>{t.amount}</td>
+                <td>{t.createdAt ? new Date(t.createdAt).toLocaleString() : ""}</td>
+                <td>
+                  <button onClick={() => this.selectTransaction(t.id)}>
+                    Select
+                  </button>
+                </td>
+              </tr>
+            )) : (
+              <tr><td colSpan={5}>No data</td></tr>
+            )}
           </tbody>
         </table>
         {log && <small>{log}</small>}
+      </>
+    );
+
+    const detail = (
+      <div style={{
+        flex: 1,
+        marginLeft: 16,
+        background: "#f9f9f9",
+        padding: 8,
+        borderRadius: 4,
+        maxHeight: 400,
+        overflow: "auto"
+      }}>
+        {currentTxId
+          ? (currentTx
+              ? <pre>{JSON.stringify(currentTx, null, 2)}</pre>
+              : <p>Loading {currentTxId}…</p>
+            )
+          : <p>Select a transaction to view its JSON here.</p>
+        }
+      </div>
+    );
+
+    return (
+      <fieldset style={{ marginBottom: 24 }}>
+        <legend><strong>Transactions</strong></legend>
+        <div style={{ display: "flex" }}>
+          <div style={{ flex: 1 }}>{table}</div>
+          {detail}
+        </div>
       </fieldset>
     );
   }
@@ -104,67 +185,145 @@ class TransactionsTable extends sComponent<{}, TxState> {
 /**********************************************************************
  *           CUSTOMERS   (paging + “Set current” button)              *
  *********************************************************************/
-class CustomersTable extends sComponent<{}, {
-  list: any[]; page: number; pageSize: number; total: number;
-  emailFilter: string; log: string; currentCustomerId: string | null;
-}> {
+interface CustState {
+  list: any[];
+  page: number;
+  pageSize: number;
+  total: number;
+  emailFilter: string;
+  log: string;
 
-  state = {
-    list: [] as any, page: 0, pageSize: 25, total: 0,
-    emailFilter: "", log: "",
-    currentCustomerId: null
+  currentCustomerId: string | null;
+  currentCustomer: any | null;
+}
+
+export class CustomersTable extends sComponent<{}, CustState> {
+  __doNotBroadcast = [
+    "list","page","pageSize","total","emailFilter","log",
+    // we broadcast currentCustomerId so omit it
+    "currentCustomer"
+  ];
+
+  state: CustState = {
+    list: [], page:0, pageSize:25, total:0,
+    emailFilter:"", log:"",
+
+    currentCustomerId: null,
+    currentCustomer: null
   };
 
-  __doNotBroadcast = ["list", "page", "pageSize", "total", "emailFilter", "log"];
-
-  private fetch = async () => {
+  private fetchList = async () => {
     const { page, pageSize, emailFilter } = this.state;
-    const r = await fetch(`${clientUrl}/customers${buildQuery({
+    const r   = await fetch(`${clientUrl}/customers${buildQuery({
       email: emailFilter, page: String(page), limit: String(pageSize)
-    })}`);
+    })}`, { method: "GET" });
     const res = await r.json();
     this.setState({
-      list: res.customers ?? [],
-      total: res.total ?? 0,
-      log: r.ok ? "Loaded." : (res.error || "Error")
+      list:  res.customers ?? [],
+      total: res.total     ?? 0,
+      log:   r.ok ? "Loaded." : (res.error || "Error")
     });
   };
 
-  private useCustomer = (id: string) =>
-    this.setState({ currentCustomerId: id });
+  private selectCustomer = async (id: string) => {
+    this.setState({ currentCustomerId: id, currentCustomer: null, log: "" });
+    try {
+      const r   = await fetch(`${clientUrl}/get-customer`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify({ customerId: id })
+      });
+      const res = await r.json();
+      if (res.customer) {
+        this.setState({ currentCustomer: res.customer });
+        console.log(res.customer);
+      } else {
+        this.setState({ log: res.error || "Not found." });
+      }
+    } catch (e: any) {
+      this.setState({ log: `Fetch error: ${e.message}` });
+    }
+  };
 
   render() {
-    const { list, page, pageSize, total, emailFilter, log } = this.state;
+    const {
+      list, page, pageSize, total, emailFilter, log,
+      currentCustomerId, currentCustomer
+    } = this.state;
     const maxPage = Math.max(0, Math.ceil(total / pageSize) - 1);
-    return (
-      <fieldset style={{ marginBottom: 24 }}>
-        <legend><strong>Customers</strong></legend>
 
-        <label>Email contains:
-          <input value={emailFilter}
-            onChange={e => this.setState({ emailFilter: e.target.value })} />
-        </label>{" "}
-        <button onClick={this.fetch}>Refresh</button>
+    const table = (
+      <>
+        <div>
+          <label>Email contains:
+            <input value={emailFilter}
+              onChange={e => this.setState({ emailFilter: e.target.value })}/>
+          </label>{" "}
+          <button onClick={this.fetchList}>Refresh</button>
+        </div>
 
-        <table border={1} cellPadding={4} style={{ marginTop: 8 }}>
-          <thead><tr><th>ID</th><th>Email</th><th /></tr></thead>
+        <table border={1} cellPadding={4} style={{ marginTop: 8, width: "100%" }}>
+          <thead>
+            <tr><th>ID</th><th>Email</th><th/></tr>
+          </thead>
           <tbody>
-            {list.length ? list.map((c, i) => (
+            {list.length ? list.map((c,i) => (
               <tr key={i}>
-                <td>{c.id}</td><td>{c.email}</td>
+                <td>{c.id}</td>
+                <td>{c.email}</td>
                 <td>
-                  <button onClick={() => this.useCustomer(c.id)}>Set current</button>
+                  <button onClick={() => this.selectCustomer(c.id)}>
+                    Select
+                  </button>
                 </td>
               </tr>
-            )) : <tr><td colSpan={3}>No data</td></tr>}
+            )) : (
+              <tr><td colSpan={3}>No data</td></tr>
+            )}
           </tbody>
         </table>
 
         <div style={{ marginTop: 4 }}>
-          <button disabled={page === 0} onClick={() => this.setState({ page: page - 1 }, this.fetch)}>Prev</button>
-          <span style={{ margin: "0 8px" }}>{page + 1}/{maxPage + 1}</span>
-          <button disabled={page === maxPage} onClick={() => this.setState({ page: page + 1 }, this.fetch)}>Next</button>
+          <button disabled={page===0}
+            onClick={() => this.setState({ page: page-1 }, this.fetchList)}>
+            Prev
+          </button>
+          <span style={{ margin: "0 8px" }}>{page+1}/{maxPage+1}</span>
+          <button disabled={page===maxPage}
+            onClick={() => this.setState({ page: page+1 }, this.fetchList)}>
+            Next
+          </button>
           {log && <small style={{ marginLeft: 8 }}>{log}</small>}
+        </div>
+      </>
+    );
+
+    const detail = (
+      <div style={{
+        flex: 1,
+        marginLeft: 16,
+        background: "#f9f9f9",
+        padding: 8,
+        borderRadius: 4,
+        maxHeight: 400,
+        overflow: "auto"
+      }}>
+        {currentCustomerId
+          ? (currentCustomer
+              ? <pre>{JSON.stringify(currentCustomer, null, 2)}</pre>
+              : <p>Loading {currentCustomerId}…</p>
+            )
+          : <p>Select a customer to view its JSON here.</p>
+        }
+      </div>
+    );
+
+    return (
+      <fieldset style={{ marginBottom: 24 }}>
+        <legend><strong>Customers</strong></legend>
+        <div style={{ display: "flex" }}>
+          <div style={{ flex: 1 }}>{table}</div>
+          {detail}
         </div>
       </fieldset>
     );
@@ -174,91 +333,99 @@ class CustomersTable extends sComponent<{}, {
 /**********************************************************************
  *           SUB-MERCHANTS          *
  *********************************************************************/
-class SubmerchantsTable extends sComponent<{}, {
+interface SubState {
   list: any[];
   page: number;
   pageSize: number;
   total: number;
   log: string;
-  currentSubMerchantId: string | null;
-}> {
-  state = {
-    list: [] as any[],
-    page: 0,
-    pageSize: 25,
-    total: 0,
-    log: "",
-    currentSubMerchantId: null
+
+  currentSubId: string | null;
+  currentSub: any | null;
+}
+
+export class SubmerchantsTable extends sComponent<{}, SubState> {
+  __doNotBroadcast = [
+    "list","page","pageSize","total","log",
+    // broadcast currentSubId so omit from doNotBroadcast
+    "currentSub"
+  ];
+
+  state: SubState = {
+    list: [], page:0, pageSize:25, total:0, log:"",
+    currentSubId: null,
+    currentSub: null
   };
-  __doNotBroadcast = ["list", "page", "pageSize", "total", "log"];
 
-  private fetch = async () => {
+  private fetchList = async () => {
     try {
-      const r = await fetch(`${clientUrl}/get-all-merchants`);
-      console.log(r);
-      const text = await r.text();        // always grab the raw payload
+      const r    = await fetch(`${clientUrl}/get-all-merchants`);
+      const text = await r.text();
       let data: any;
-
-      // try to parse JSON, otherwise surface the raw text
       try {
         data = JSON.parse(text);
       } catch (e: any) {
-        return this.setState({
-          log: `Invalid JSON response: ${e.message}`
-        });
+        return this.setState({ log: `Invalid JSON: ${e.message}` });
       }
-
-      // handle HTTP errors
       if (!r.ok) {
-        const msg = data.error || `Server returned ${r.status}`;
-        return this.setState({ log: msg });
+        return this.setState({ log: data.error || `Status ${r.status}` });
       }
-
-      // pull out the array safely
       const all = Array.isArray(data.merchants) ? data.merchants : [];
       this.setState(({ page, pageSize }) => ({
         total: all.length,
-        list: all.slice(
-          page * pageSize,
-          page * pageSize + pageSize
-        ),
-        log: "Loaded."
+        list:  all.slice(page*pageSize, page*pageSize + pageSize),
+        log:   "Loaded."
       }));
     } catch (e: any) {
-      // network / fetch-level error
       this.setState({ log: `Fetch error: ${e.message}` });
     }
   };
 
-
-  private useSub = (id: string) =>
-    this.setState({ currentSubMerchantId: id }, () => {
-      /* you could also broadcast this change to your global state here */
-    });
+  private selectSubmerchant = async (id: string) => {
+    this.setState({ currentSubId: id, currentSub: null, log: "" });
+    try {
+      const r   = await fetch(`${clientUrl}/get-submerchant`, {
+        method:  "POST",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify({ merchantAccountId: id })
+      });
+      const res = await r.json();
+      if (res.subMerchant) {
+        this.setState({ currentSub: res.subMerchant });
+      } else {
+        this.setState({ log: res.error || "Not found." });
+      }
+    } catch (e: any) {
+      this.setState({ log: `Fetch error: ${e.message}` });
+    }
+  };
 
   render() {
-    const { list, page, pageSize, total, log } = this.state;
+    const {
+      list, page, pageSize, total, log,
+      currentSubId, currentSub
+    } = this.state;
     const maxPage = Math.max(0, Math.ceil(total / pageSize) - 1);
 
-    return (
-      <fieldset style={{ marginBottom: 24 }}>
-        <legend><strong>Merchants</strong></legend>
-        <button onClick={this.fetch}>Refresh List</button>
-
-        <table border={1} cellPadding={4} style={{ marginTop: 8 }}>
+    const table = (
+      <>
+        <button onClick={this.fetchList}>Refresh List</button>
+        <table border={1} cellPadding={4} style={{ marginTop: 8, width: "100%" }}>
           <thead>
-            <tr><th>ID</th><th>Status</th><th /></tr>
+            <tr><th>ID</th><th>Status</th><th/></tr>
           </thead>
           <tbody>
-            {list.length ? list.map((s, i) => {
-              const id = s.id ?? s.merchantAccount?.id;
+            {list.length ? list.map((s,i) => {
+              const id     = s.id ?? s.merchantAccount?.id;
               const status = s.status ?? s.merchantAccount?.status;
               return (
                 <tr key={i}>
                   <td>{id}</td>
-                  <td>{status ?? "N/A"}</td>
+                  <td>{status}</td>
                   <td>
-                    <button onClick={() => this.useSub(id)}>Set current</button>
+                    <button onClick={() => this.selectSubmerchant(id)}>
+                      Select
+                    </button>
                   </td>
                 </tr>
               );
@@ -267,12 +434,49 @@ class SubmerchantsTable extends sComponent<{}, {
             )}
           </tbody>
         </table>
-
         <div style={{ marginTop: 4 }}>
-          <button disabled={page === 0} onClick={() => this.setState({ page: page - 1 }, this.fetch)}>Prev</button>
-          <span style={{ margin: "0 8px" }}>{page + 1}/{maxPage + 1}</span>
-          <button disabled={page === maxPage} onClick={() => this.setState({ page: page + 1 }, this.fetch)}>Next</button>
+          <button disabled={page===0}
+            onClick={() => this.setState({ page: page-1 }, this.fetchList)}>
+            Prev
+          </button>
+          <span style={{ margin: "0 8px" }}>
+            {page+1}/{maxPage+1}
+          </span>
+          <button disabled={page===maxPage}
+            onClick={() => this.setState({ page: page+1 }, this.fetchList)}>
+            Next
+          </button>
           {log && <small style={{ marginLeft: 8 }}>{log}</small>}
+        </div>
+      </>
+    );
+
+    const detail = (
+      <div style={{
+        flex:1,
+        marginLeft:16,
+        background:"#f9f9f9",
+        padding:8,
+        borderRadius:4,
+        maxHeight:400,
+        overflow:"auto"
+      }}>
+        {currentSubId
+          ? (currentSub
+              ? <pre>{JSON.stringify(currentSub, null, 2)}</pre>
+              : <p>Loading {currentSubId}…</p>
+            )
+          : <p>Select a merchant to view its JSON here.</p>
+        }
+      </div>
+    );
+
+    return (
+      <fieldset style={{ marginBottom: 24 }}>
+        <legend><strong>Sub-Merchants</strong></legend>
+        <div style={{ display: "flex" }}>
+          <div style={{ flex:1 }}>{table}</div>
+          {detail}
         </div>
       </fieldset>
     );
