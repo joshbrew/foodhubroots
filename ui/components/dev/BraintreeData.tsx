@@ -340,7 +340,7 @@ interface SubState {
   total: number;
   log: string;
 
-  currentSubId: string | null;
+  currentSubMerchantId: string | null;
   currentSub: any | null;
 }
 
@@ -353,7 +353,7 @@ export class SubmerchantsTable extends sComponent<{}, SubState> {
 
   state: SubState = {
     list: [], page:0, pageSize:25, total:0, log:"",
-    currentSubId: null,
+    currentSubMerchantId: null,
     currentSub: null
   };
 
@@ -382,7 +382,7 @@ export class SubmerchantsTable extends sComponent<{}, SubState> {
   };
 
   private selectSubmerchant = async (id: string) => {
-    this.setState({ currentSubId: id, currentSub: null, log: "" });
+    this.setState({ currentSubMerchantId: id, currentSub: null, log: "" });
     try {
       const r   = await fetch(`${clientUrl}/get-submerchant`, {
         method:  "POST",
@@ -403,7 +403,7 @@ export class SubmerchantsTable extends sComponent<{}, SubState> {
   render() {
     const {
       list, page, pageSize, total, log,
-      currentSubId, currentSub
+      currentSubMerchantId, currentSub
     } = this.state;
     const maxPage = Math.max(0, Math.ceil(total / pageSize) - 1);
 
@@ -461,10 +461,10 @@ export class SubmerchantsTable extends sComponent<{}, SubState> {
         maxHeight:400,
         overflow:"auto"
       }}>
-        {currentSubId
+        {currentSubMerchantId
           ? (currentSub
               ? <pre>{JSON.stringify(currentSub, null, 2)}</pre>
-              : <p>Loading {currentSubId}…</p>
+              : <p>Loading {currentSubMerchantId}…</p>
             )
           : <p>Select a merchant to view its JSON here.</p>
         }
