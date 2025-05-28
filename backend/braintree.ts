@@ -573,6 +573,7 @@ export async function getTransactions(
   });
 }
 
+
 export interface CustomerQuery {
   email?: string;
   firstName?: string;
@@ -715,12 +716,12 @@ export async function processWebhook(btSignature: string, btPayload: string): Pr
  * **HTTP Mapping:**  
  * POST `/refund`
  */
-export async function refundTransaction(transactionId: string, amount?: string): Promise<string> {
+export async function refundTransaction(transactionId: string, amount?: string): Promise<braintree.Transaction> {
   const result = await btGateway.transaction.refund(transactionId, amount);
   if (!result.success) {
     throw new Error(result.message);
   }
-  return result.transaction.id;
+  return result.transaction;
 }
 
 /**
@@ -732,12 +733,118 @@ export async function refundTransaction(transactionId: string, amount?: string):
  * **HTTP Mapping:**  
  * POST `/void-transaction`
  */
-export async function voidTransaction(transactionId: string): Promise<string> {
+export async function voidTransaction(transactionId: string): Promise<braintree.Transaction> {
   const result = await btGateway.transaction.void(transactionId);
   if (!result.success) {
     throw new Error(result.message);
   }
-  return result.transaction.id;
+  return result.transaction;
+}
+
+
+/**
+ * Submits an authorized transaction for settlement.
+ *
+ * @param transactionId – the authorized transaction’s ID
+ * @param amount?       – optional override settlement amount
+ * @returns the settled transaction ID
+ */
+export async function submitForSettlement(
+  transactionId: string,
+  amount?: string
+): Promise<braintree.Transaction> {
+  const result = await btGateway.transaction.submitForSettlement(transactionId, amount);
+  if (!result.success) throw new Error(result.message);
+  return result.transaction;
+}
+
+/**
+ * Submits a partial settlement on an authorized transaction.
+ *
+ * @param transactionId – the authorized transaction’s ID
+ * @param amount        – the partial amount to settle
+ * @returns the new partial–settlement transaction ID
+ */
+export async function submitForPartialSettlement(
+  transactionId: string,
+  amount: string
+): Promise<braintree.Transaction> {
+  const result = await btGateway.transaction.submitForPartialSettlement(transactionId, amount);
+  if (!result.success) throw new Error(result.message);
+  return result.transaction;
+}
+
+/**
+ * Adjusts the amount of an existing authorization.
+ *
+ * @param transactionId – the authorized transaction’s ID
+ * @param amount        – the new authorization amount
+ * @returns the updated Transaction object
+ */
+export async function adjustAuthorization(
+  transactionId: string,
+  amount: string
+): Promise<braintree.Transaction> {
+  const result = await btGateway.transaction.adjustAuthorization(transactionId, amount);
+  if (!result.success) throw new Error(result.message);
+  return result.transaction;
+}
+
+/**
+ * Places a transaction on hold in escrow (for marketplace / escrow use-cases).
+ *
+ * @param transactionId – the transaction ID to escrow
+ * @returns the Transaction object
+ */
+export async function holdInEscrow(
+  transactionId: string
+): Promise<braintree.Transaction> {
+  const result = await btGateway.transaction.holdInEscrow(transactionId);
+  return result;
+}
+
+/**
+ * Releases an escrowed transaction.
+ *
+ * @param transactionId – the escrowed transaction ID
+ * @returns the released Transaction object
+ */
+export async function releaseFromEscrow(
+  transactionId: string
+): Promise<braintree.Transaction> {
+  const result = await btGateway.transaction.releaseFromEscrow(transactionId);
+  return result;
+}
+
+/**
+ * Cancels a pending escrow release.
+ *
+ * @param transactionId – the transaction ID whose escrow release is pending
+ * @returns void (throws on failure)
+ */
+export async function cancelRelease(
+  transactionId: string
+): Promise<void> {
+  return await btGateway.transaction.cancelRelease(transactionId);
+}
+
+/**
+ * Creates a new transaction by cloning a previous one.
+ *
+ * @param transactionId – the ID of the transaction to clone
+ * @param overrides?    – optional clone overrides (amount, options, etc.)
+ * @returns the newly created transaction’s ID
+ */
+export async function cloneTransaction(
+  transactionId: string,
+  overrides?: {
+    amount: string;
+    options: {
+        submitForSettlement: boolean;
+    };
+}
+) {
+  return await btGateway.transaction.cloneTransaction(transactionId, overrides ?? {} as any);
 }
 
 /**
@@ -1079,8 +1186,8 @@ export const braintreeRoutes: Routes = {
     POST: async (ctx: Context) => {
       try {
         const { transactionId, amount } = await ctx.body();
-        const refundId = await refundTransaction(transactionId, amount);
-        await ctx.json(200, { success: true, refundId });
+        const txn = await refundTransaction(transactionId, amount);
+        await ctx.json(200, { success: true, transaction:txn  });
       } catch (err: any) {
         await ctx.json(500, { error: err.message || "Refund failed" });
       }
@@ -1091,10 +1198,98 @@ export const braintreeRoutes: Routes = {
     POST: async (ctx: Context) => {
       try {
         const { transactionId } = await ctx.body();
-        const voidId = await voidTransaction(transactionId);
-        await ctx.json(200, { success: true, voidId });
+        const txn = await voidTransaction(transactionId);
+        await ctx.json(200, { success: true, transaction:txn  });
       } catch (err: any) {
         await ctx.json(500, { error: err.message || "Void transaction failed" });
+      }
+    }
+  },
+
+  /* ────────── SUBMIT FOR SETTLEMENT ────────── */
+  "/submit-for-settlement": {
+    POST: async (ctx: Context) => {
+      try {
+        const { transactionId, amount } = await ctx.body();
+        const txn = await submitForSettlement(transactionId, amount);
+        await ctx.json(200, { success: true, transaction:txn });
+      } catch (err: any) {
+        await ctx.json(500, { success: false, error: err.message || "Submit for settlement failed" });
+      }
+    }
+  },
+
+  "/submit-for-partial-settlement": {
+    POST: async (ctx: Context) => {
+      try {
+        const { transactionId, amount } = await ctx.body();
+        const txn = await submitForPartialSettlement(transactionId, amount);
+        await ctx.json(200, { success: true, transaction:txn });
+      } catch (err: any) {
+        await ctx.json(500, { success: false, error: err.message || "Partial settlement failed" });
+      }
+    }
+  },
+
+  /* ────────── AUTHORIZATION ADJUST ────────── */
+  "/adjust-authorization": {
+    POST: async (ctx: Context) => {
+      try {
+        const { transactionId, amount } = await ctx.body();
+        const txn = await adjustAuthorization(transactionId, amount);
+        await ctx.json(200, { success: true, transaction: txn });
+      } catch (err: any) {
+        await ctx.json(500, { success: false, error: err.message || "Adjust authorization failed" });
+      }
+    }
+  },
+
+  /* ────────── ESCROW OPERATIONS ────────── */
+  "/hold-in-escrow": {
+    POST: async (ctx: Context) => {
+      try {
+        const { transactionId } = await ctx.body();
+        const txn = await holdInEscrow(transactionId);
+        await ctx.json(200, { success: true, transaction: txn });
+      } catch (err: any) {
+        await ctx.json(500, { success: false, error: err.message || "Hold in escrow failed" });
+      }
+    }
+  },
+
+  "/release-from-escrow": {
+    POST: async (ctx: Context) => {
+      try {
+        const { transactionId } = await ctx.body();
+        const txn = await releaseFromEscrow(transactionId);
+        await ctx.json(200, { success: true, transaction: txn });
+      } catch (err: any) {
+        await ctx.json(500, { success: false, error: err.message || "Release from escrow failed" });
+      }
+    }
+  },
+
+  "/cancel-release": {
+    POST: async (ctx: Context) => {
+      try {
+        const { transactionId } = await ctx.body();
+        await cancelRelease(transactionId);
+        await ctx.json(200, { success: true, transactionId:transactionId });
+      } catch (err: any) {
+        await ctx.json(500, { success: false, error: err.message || "Cancel release failed" });
+      }
+    }
+  },
+
+  /* ────────── CLONE TRANSACTION ────────── */
+  "/clone-transaction": {
+    POST: async (ctx: Context) => {
+      try {
+        const { transactionId, overrides } = await ctx.body();
+        const newId = await cloneTransaction(transactionId, overrides);
+        await ctx.json(200, { success: true, transactionId: newId });
+      } catch (err: any) {
+        await ctx.json(500, { success: false, error: err.message || "Clone transaction failed" });
       }
     }
   },
