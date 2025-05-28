@@ -3,6 +3,7 @@ import querystring from 'querystring';
 import braintree from 'braintree';
 import { Context, getRequestBody, Routes } from './util';
 import { parse } from 'url';
+import { Readable } from "stream";
 import {
   AddressResponse, DisputeResponse, CustomerResponse, TransactionResponse,
   SubscriptionResponse, DiscountResponse, CreditCardResponse, VenmoAccountResponse,
@@ -104,12 +105,9 @@ export async function findTransaction(transactionId: string): Promise<braintree.
  * **HTTP Mapping:**  
  * POST `/checkout`
  */
-export async function processCheckout(customerId: string, amount: string): Promise<string> {
-  const saleRequest: braintree.TransactionRequest = {
-    amount: amount,
-    customerId: customerId,
-    options: { submitForSettlement: true }
-  };
+export async function processCheckout(
+  saleRequest: braintree.TransactionRequest
+): Promise<string> {
   const result = await btGateway.transaction.sale(saleRequest);
   if (!result.success) {
     throw new Error(result.message);
@@ -474,53 +472,59 @@ export async function createOrUpdateSubmerchant(
 
 
 
-/**
- * Processes a split transaction and returns earnings details.
- *
- * @param params - Contains subMerchantAccountId, amount, and optionally nonce or customerId.
- * @returns A Promise resolving to an object with the transactionId, subMerchantEarnings,
- * and masterMerchantEarnings.
- *
- * **HTTP Mapping:**  
- * POST `/split-transaction`
- */
-export async function splitTransaction(params: {
+
+interface SplitParams {
   subMerchantAccountId: string;
-  amount: string;
-  nonce?: string;
+  amount: string;  // e.g. "50.00"
   customerId?: string;
-}): Promise<{
-  transactionId: string;
-  subMerchantEarnings: string;
-  masterMerchantEarnings: string;
-}> {
-  const decimalAmount = parseFloat(params.amount);
-  const serviceFeeDecimal = decimalAmount * 0.02;
-  const serviceFeeAmount = serviceFeeDecimal.toFixed(2);
+  nonce?: string;
+  serviceFeePercent?: string;  // e.g. "2.0" (enforced before)
+  serviceFeeAmount?: string;  // optional absolute override
+}
+
+export async function splitTransaction(params: SplitParams) {
+  const { amount, serviceFeePercent, serviceFeeAmount } = params;
+
+  // determine serviceFeeAmount
+  let feeAmt: number;
+  if (serviceFeeAmount) {
+    feeAmt = parseFloat(serviceFeeAmount);
+  } else if (serviceFeePercent) {
+    feeAmt = parseFloat(amount) * (parseFloat(serviceFeePercent) / 100);
+  } else {
+    feeAmt = 0;
+  }
+  const feeStr = feeAmt.toFixed(2);
+
+  // build the Braintree request
   const saleRequest: braintree.TransactionRequest = {
     merchantAccountId: params.subMerchantAccountId,
-    amount: params.amount,
-    serviceFeeAmount: serviceFeeAmount,
+    amount,
+    serviceFeeAmount: feeStr,
     options: { submitForSettlement: true }
   };
+
   if (params.customerId) {
     saleRequest.customerId = params.customerId;
   } else if (params.nonce) {
     saleRequest.paymentMethodNonce = params.nonce;
   }
+
   const result = await btGateway.transaction.sale(saleRequest);
   if (!result.success) {
     throw new Error(result.message);
   }
+
+  const total = parseFloat(amount);
+  const subEarn = (total - feeAmt).toFixed(2);
+
   return {
     transactionId: result.transaction.id,
-    subMerchantEarnings: (decimalAmount - parseFloat(serviceFeeAmount)).toFixed(2),
-    masterMerchantEarnings: serviceFeeAmount
+    subMerchantEarnings: subEarn,
+    masterMerchantEarnings: feeStr
   };
 }
 
-
-import { Readable } from "stream";
 
 export interface TransactionQuery {
   startDate?: string;         // ISO date string
@@ -916,8 +920,8 @@ export const braintreeRoutes: Routes = {
   "/checkout": {
     POST: async (ctx: Context) => {
       try {
-        const { customerId, amount } = await ctx.body();
-        const transactionId = await processCheckout(customerId, amount);
+        const saleRequest = (await ctx.body()) as braintree.TransactionRequest;
+        const transactionId = await processCheckout(saleRequest);
         await ctx.json(200, { success: true, transactionId });
       } catch (err: any) {
         await ctx.json(500, { error: err.message || "Checkout failed" });
@@ -1040,14 +1044,32 @@ export const braintreeRoutes: Routes = {
   },
 
   /* ─────────────  SPLIT-PAYMENT / TRANSACTIONS  ───────────── */
+
   "/split-transaction": {
     POST: async (ctx: Context) => {
       try {
-        const { subMerchantAccountId, amount, nonce, customerId } = await ctx.body();
-        const result = await splitTransaction({ subMerchantAccountId, amount, nonce, customerId });
-        await ctx.json(200, result);
+        // allow either serviceFeePercent or explicit serviceFeeAmount
+        const {
+          subMerchantAccountId,
+          customerId,
+          nonce,
+          amount,
+          serviceFeePercent,
+          serviceFeeAmount
+        } = await ctx.body();
+
+        const result = await splitTransaction({
+          subMerchantAccountId,
+          customerId,
+          nonce,
+          amount,
+          serviceFeePercent,  // e.g. "2.5"
+          serviceFeeAmount    // e.g. "1.25"
+        });
+
+        await ctx.json(200, { success: true, ...result });
       } catch (err: any) {
-        await ctx.json(500, { error: err.message || "Failed to process split transaction" });
+        await ctx.json(500, { success: false, error: err.message });
       }
     }
   },
@@ -1090,7 +1112,7 @@ export const braintreeRoutes: Routes = {
       }
     }
   },
-  
+
   "/create-payment-method": {
     POST: async (ctx: Context) => {
       try {

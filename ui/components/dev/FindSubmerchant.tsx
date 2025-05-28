@@ -15,6 +15,7 @@ interface FindSubmerchantState {
       subMerchantAccount: null,
       subMerchantLog: ""
     };
+    __doNotBroadcast = ['subMerchantLog', 'subMerchantAccount', 'merchantAccountId'];
   
     handleLookup = async () => {
       const { merchantAccountId } = this.state;
